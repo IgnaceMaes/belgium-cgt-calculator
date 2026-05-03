@@ -6,6 +6,7 @@ import { modifier } from 'ember-modifier';
 import {
   type TobCategory,
   type YearResult,
+  EXEMPTION_INDEXATION_RATE,
   holdScenario,
   harvestScenario,
   smartScenario,
@@ -43,6 +44,7 @@ export default class CgtCalculator extends Component {
   @tracked brokerReporting: 'opt-in' | 'opt-out' = 'opt-in';
   @tracked includePortfolioTax = false;
   @tracked cgtRate = 0.1;
+  @tracked exemptionIndexRate = EXEMPTION_INDEXATION_RATE;
   @tracked showDetails = false;
   @tracked isDark = true;
 
@@ -68,6 +70,9 @@ export default class CgtCalculator extends Component {
   get cgtRatePct() {
     return Math.round(this.cgtRate * 1000) / 10;
   }
+  get exemptionIndexRatePct() {
+    return Math.round(this.exemptionIndexRate * 1000) / 10;
+  }
 
   // ─── Scenarios ─────────────────────────────────────────────
 
@@ -82,6 +87,7 @@ export default class CgtCalculator extends Component {
       this.yearlyContribution,
       this.includePortfolioTax,
       this.cgtRate,
+      this.exemptionIndexRate,
     );
   }
 
@@ -96,6 +102,7 @@ export default class CgtCalculator extends Component {
       this.yearlyContribution,
       this.includePortfolioTax,
       this.cgtRate,
+      this.exemptionIndexRate,
     );
   }
 
@@ -110,6 +117,7 @@ export default class CgtCalculator extends Component {
       this.yearlyContribution,
       this.includePortfolioTax,
       this.cgtRate,
+      this.exemptionIndexRate,
     );
   }
 
@@ -281,6 +289,9 @@ export default class CgtCalculator extends Component {
   onCgtRate = (e: Event) => {
     this.cgtRate = (Number((e.target as HTMLInputElement).value) || 0) / 100;
   };
+  onExemptionIndexRate = (e: Event) => {
+    this.exemptionIndexRate = (Number((e.target as HTMLInputElement).value) || 0) / 100;
+  };
   toggleDetails = () => {
     this.showDetails = !this.showDetails;
   };
@@ -353,6 +364,7 @@ export default class CgtCalculator extends Component {
           @yearsToProject={{this.yearsToProject}}
           @yearlyContribution={{this.yearlyContribution}}
           @cgtRatePct={{this.cgtRatePct}}
+          @exemptionIndexRatePct={{this.exemptionIndexRatePct}}
           @tobCategory={{this.tobCategory}}
           @brokerReporting={{this.brokerReporting}}
           @brokerDescription={{this.brokerDescription}}
@@ -363,6 +375,7 @@ export default class CgtCalculator extends Component {
           @onYears={{this.onYears}}
           @onContribution={{this.setContribution}}
           @onCgtRate={{this.onCgtRate}}
+          @onExemptionIndexRate={{this.onExemptionIndexRate}}
           @onTob={{this.onTob}}
           @onBroker={{this.onBroker}}
           @onTogglePortfolioTax={{this.togglePortfolioTax}}

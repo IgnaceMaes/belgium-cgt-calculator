@@ -5,6 +5,7 @@ export const CGT_RATE = 0.1;
 export const CGT_EXEMPTION = 10_000;
 export const CARRY_FORWARD_PER_YEAR = 1_000; // 1/10th of base exemption
 export const MAX_CARRY_FORWARD = 5_000; // max 5 years of carry-forward
+export const EXEMPTION_INDEXATION_RATE = 0.02; // 2% annual indexation of the exemption
 
 // Taks op effectenrekeningen (portfolio tax)
 export const PORTFOLIO_TAX_RATE = 0.0015; // 0.15%
@@ -59,18 +60,21 @@ export function calcTob(amount: number, category: TobCategory): number {
 export function computeExemption(
   gain: number,
   carryForward: number,
+  baseExemption = CGT_EXEMPTION,
+  cfPerYear = CARRY_FORWARD_PER_YEAR,
+  maxCF = MAX_CARRY_FORWARD,
 ): { effectiveExemption: number; newCarryForward: number } {
-  const totalExemption = CGT_EXEMPTION + carryForward;
+  const totalExemption = baseExemption + carryForward;
 
   if (gain >= totalExemption) {
     // Fully used all exemption + carry-forward
     return { effectiveExemption: totalExemption, newCarryForward: 0 };
   }
 
-  // Didn't fully use exemption → carry over €1,000
+  // Didn't fully use exemption → carry over
   const newCF = Math.min(
-    carryForward + CARRY_FORWARD_PER_YEAR,
-    MAX_CARRY_FORWARD,
+    carryForward + cfPerYear,
+    maxCF,
   );
   return { effectiveExemption: totalExemption, newCarryForward: newCF };
 }
@@ -89,6 +93,7 @@ export function holdScenario(
   yearlyContribution = 0,
   includePortfolioTax = false,
   cgtRate = CGT_RATE,
+  exemptionIndexRate = EXEMPTION_INDEXATION_RATE,
 ): YearResult[] {
   const results: YearResult[] = [];
   let value = portfolioValue;
@@ -133,10 +138,16 @@ export function holdScenario(
 
     const isFinalYear = y === years;
 
+    // Indexed exemption values for this year
+    const indexFactor = Math.pow(1 + exemptionIndexRate, y - 1);
+    const indexedExemption = CGT_EXEMPTION * indexFactor;
+    const indexedCFPerYear = CARRY_FORWARD_PER_YEAR * indexFactor;
+    const indexedMaxCF = MAX_CARRY_FORWARD * indexFactor;
+
     if (isFinalYear) {
       // Exit: sell everything. Combine withdrawal + exit gains for ONE annual exemption.
       const totalRealized = withdrawalGain + ug;
-      const { effectiveExemption } = computeExemption(totalRealized, carryForward);
+      const { effectiveExemption } = computeExemption(totalRealized, carryForward, indexedExemption, indexedCFPerYear, indexedMaxCF);
 
       let cgt: number;
       if (brokerMode === 'opt-in') {
@@ -165,7 +176,7 @@ export function holdScenario(
       });
     } else {
       // Non-final year: only the withdrawal is a realization event
-      const { effectiveExemption, newCarryForward } = computeExemption(withdrawalGain, carryForward);
+      const { effectiveExemption, newCarryForward } = computeExemption(withdrawalGain, carryForward, indexedExemption, indexedCFPerYear, indexedMaxCF);
 
       let cgt = 0;
       if (withdrawalGain > 0) {
@@ -220,6 +231,7 @@ export function harvestScenario(
   yearlyContribution = 0,
   includePortfolioTax = false,
   cgtRate = CGT_RATE,
+  exemptionIndexRate = EXEMPTION_INDEXATION_RATE,
 ): YearResult[] {
   const results: YearResult[] = [];
   let value = portfolioValue;
@@ -247,9 +259,18 @@ export function harvestScenario(
     // Losses cannot be carried forward to future years (Belgian law)
     const gain = Math.max(0, value - basis);
 
+    // Indexed exemption values for this year
+    const indexFactor = Math.pow(1 + exemptionIndexRate, y - 1);
+    const indexedExemption = CGT_EXEMPTION * indexFactor;
+    const indexedCFPerYear = CARRY_FORWARD_PER_YEAR * indexFactor;
+    const indexedMaxCF = MAX_CARRY_FORWARD * indexFactor;
+
     const { effectiveExemption, newCarryForward } = computeExemption(
       gain,
       carryForward,
+      indexedExemption,
+      indexedCFPerYear,
+      indexedMaxCF,
     );
     carryForward = newCarryForward;
 
@@ -322,6 +343,7 @@ export function smartScenario(
   yearlyContribution = 0,
   includePortfolioTax = false,
   cgtRate = CGT_RATE,
+  exemptionIndexRate = EXEMPTION_INDEXATION_RATE,
 ): YearResult[] {
   const results: YearResult[] = [];
   let value = portfolioValue;
@@ -351,12 +373,18 @@ export function smartScenario(
       ? Math.min(-yearlyContribution, value)
       : 0;
 
+    // Indexed exemption values for this year
+    const indexFactor = Math.pow(1 + exemptionIndexRate, y - 1);
+    const indexedExemption = CGT_EXEMPTION * indexFactor;
+    const indexedCFPerYear = CARRY_FORWARD_PER_YEAR * indexFactor;
+    const indexedMaxCF = MAX_CARRY_FORWARD * indexFactor;
+
     if (totalGain <= 0 && withdrawalNeeded === 0) {
       const ptax = calcPortfolioTax(value, includePortfolioTax);
       value -= ptax;
       carryForward = Math.min(
-        carryForward + CARRY_FORWARD_PER_YEAR,
-        MAX_CARRY_FORWARD,
+        carryForward + indexedCFPerYear,
+        indexedMaxCF,
       );
       results.push({
         year: y,
@@ -384,8 +412,8 @@ export function smartScenario(
       if (basis < 0) basis = 0;
       if (value < 0) value = 0;
       carryForward = Math.min(
-        carryForward + CARRY_FORWARD_PER_YEAR,
-        MAX_CARRY_FORWARD,
+        carryForward + indexedCFPerYear,
+        indexedMaxCF,
       );
       results.push({
         year: y,
@@ -403,7 +431,7 @@ export function smartScenario(
       continue;
     }
 
-    const effectiveExemption = CGT_EXEMPTION + carryForward;
+    const effectiveExemption = indexedExemption + carryForward;
     // Final year: sell everything (exit). Otherwise: sell enough for exemption + withdrawal.
     const isFinalYear = y === years;
     // Minimum fraction needed to cover the withdrawal
@@ -446,8 +474,8 @@ export function smartScenario(
     // Smart harvest tries to use exactly the exemption → no carry-forward builds
     if (taxable === 0 && rg < effectiveExemption) {
       carryForward = Math.min(
-        carryForward + CARRY_FORWARD_PER_YEAR,
-        MAX_CARRY_FORWARD,
+        carryForward + indexedCFPerYear,
+        indexedMaxCF,
       );
     } else {
       carryForward = 0;

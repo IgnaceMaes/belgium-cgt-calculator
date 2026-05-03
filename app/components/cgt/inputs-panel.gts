@@ -27,6 +27,7 @@ interface InputsPanelSignature {
     yearsToProject: number;
     yearlyContribution: number;
     cgtRatePct: number;
+    exemptionIndexRatePct: number;
     tobCategory: TobCategory;
     brokerReporting: 'opt-in' | 'opt-out';
     brokerDescription: string;
@@ -37,6 +38,7 @@ interface InputsPanelSignature {
     onYears: (e: Event) => void;
     onContribution: (v: number) => void;
     onCgtRate: (e: Event) => void;
+    onExemptionIndexRate: (e: Event) => void;
     onTob: (v: TobCategory) => void;
     onBroker: (v: 'opt-in' | 'opt-out') => void;
     onTogglePortfolioTax: () => void;
@@ -306,6 +308,43 @@ export default class InputsPanel extends Component<InputsPanelSignature> {
               max="100"
               class="tabular-nums pr-7"
               {{on "input" @onCgtRate}}
+            />
+            <span
+              class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground"
+            >%</span>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <div class="flex items-center gap-1.5">
+            <Label class="text-xs text-muted-foreground">Exemption indexation</Label>
+            <Tooltip>
+              <TooltipTrigger>
+                <svg
+                  class="h-3.5 w-3.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors cursor-help"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2"
+                ><circle cx="12" cy="12" r="10" /><path
+                    d="M12 16v-4m0-4h.01"
+                  /></svg>
+              </TooltipTrigger>
+              <TooltipContent @side="top" class="max-w-xs">Annual growth rate of
+                the €10,000 tax-free exemption. Belgian tax thresholds are
+                typically indexed to inflation. Set to 0% to disable
+                indexation.</TooltipContent>
+            </Tooltip>
+          </div>
+          <div class="relative">
+            <Input
+              @type="number"
+              value={{@exemptionIndexRatePct}}
+              step="0.5"
+              min="0"
+              max="20"
+              class="tabular-nums pr-7"
+              {{on "input" @onExemptionIndexRate}}
             />
             <span
               class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground"

@@ -16,6 +16,7 @@ import {
   CGT_EXEMPTION,
   CARRY_FORWARD_PER_YEAR,
   MAX_CARRY_FORWARD,
+  EXEMPTION_INDEXATION_RATE,
   PORTFOLIO_TAX_RATE,
   PORTFOLIO_TAX_THRESHOLD,
   TOB,
@@ -165,6 +166,10 @@ module('Unit | Utils | tax-calc', function () {
         10,
         'shares',
         'opt-out',
+        0,
+        false,
+        CGT_RATE,
+        0,
       );
       // Year 1: carry = 1K, Year 5: carry = 5K (max), Year 9: still 5K
       assert.strictEqual(results[0]!.carryForward, 1_000);
@@ -579,6 +584,10 @@ module('Unit | Utils | tax-calc', function () {
         7,
         'shares',
         'opt-out',
+        0,
+        false,
+        CGT_RATE,
+        0,
       );
       // Year 5: 5K (max)
       assert.strictEqual(results[4]!.carryForward, MAX_CARRY_FORWARD);
@@ -851,7 +860,7 @@ module('Unit | Utils | tax-calc', function () {
 
   module('carry-forward detailed', function () {
     test('5 years unused → max carry-forward of €5,000', function (assert) {
-      const results = holdScenario(100_000, 100_000, 0, 6, 'shares', 'opt-out');
+      const results = holdScenario(100_000, 100_000, 0, 6, 'shares', 'opt-out', 0, false, CGT_RATE, 0);
       // No gains, so carry-forward accumulates each year
       assert.strictEqual(results[0]!.carryForward, 1_000);
       assert.strictEqual(results[1]!.carryForward, 2_000);
@@ -869,6 +878,10 @@ module('Unit | Utils | tax-calc', function () {
         10,
         'shares',
         'opt-out',
+        0,
+        false,
+        CGT_RATE,
+        0,
       );
       for (let i = 4; i < 9; i++) {
         assert.strictEqual(
@@ -888,6 +901,10 @@ module('Unit | Utils | tax-calc', function () {
         10,
         'shares',
         'opt-out',
+        0,
+        false,
+        CGT_RATE,
+        0,
       );
       const last = results[9]!;
       // After 10 years at 1%: value ≈ 110K * 1.01^10 ≈ 121,538
@@ -1466,7 +1483,7 @@ module('Unit | Utils | tax-calc', function () {
     test('hold: carry-forward accumulates correctly with withdrawals', function (assert) {
       // Withdraw small amount from at-cost portfolio (0 gain realized)
       // Exemption unused → carry-forward should still accumulate
-      const results = holdScenario(100_000, 100_000, 0.01, 5, 'shares', 'opt-out', -1_000);
+      const results = holdScenario(100_000, 100_000, 0.01, 5, 'shares', 'opt-out', -1_000, false, CGT_RATE, 0);
       // Year 1: withdrawal gain ≈ 0 (at cost), exemption unused
       assert.strictEqual(results[0]!.carryForward, CARRY_FORWARD_PER_YEAR,
         'carry-forward should accumulate when exemption unused');
@@ -1576,6 +1593,202 @@ module('Unit | Utils | tax-calc', function () {
         lastYear.portfolioValue > 40_000 && lastYear.portfolioValue <= 50_000,
         `remaining should be ~50K, got ${lastYear.portfolioValue}`,
       );
+    });
+  });
+
+  // ─── Exemption Indexation ────────────────────────────────
+
+  module('exemption indexation', function () {
+    test('EXEMPTION_INDEXATION_RATE constant is 0.02', function (assert) {
+      assert.strictEqual(EXEMPTION_INDEXATION_RATE, 0.02);
+    });
+
+    test('computeExemption accepts custom base exemption', function (assert) {
+      // Year 2 with 2% indexation: base = 10000 * 1.02 = 10200
+      const indexed = CGT_EXEMPTION * 1.02;
+      const { effectiveExemption, newCarryForward } = computeExemption(
+        5_000, 0, indexed, CARRY_FORWARD_PER_YEAR * 1.02, MAX_CARRY_FORWARD * 1.02,
+      );
+      assert.strictEqual(effectiveExemption, indexed);
+      assert.true(
+        Math.abs(newCarryForward - 1020) < 0.01,
+        `carry-forward should be ~1020, got ${newCarryForward}`,
+      );
+    });
+
+    test('computeExemption: indexed carry-forward caps at indexed max', function (assert) {
+      const factor = 1.02 ** 5; // year 6
+      const indexedCF = CARRY_FORWARD_PER_YEAR * factor;
+      const indexedMax = MAX_CARRY_FORWARD * factor;
+      // Start with carry-forward already near max
+      const { newCarryForward } = computeExemption(
+        0, indexedMax - 1, CGT_EXEMPTION * factor, indexedCF, indexedMax,
+      );
+      assert.true(
+        Math.abs(newCarryForward - indexedMax) < 0.01,
+        `should cap at indexed max ${indexedMax}, got ${newCarryForward}`,
+      );
+    });
+
+    test('harvest: indexed exemption is larger than non-indexed over 10 years', function (assert) {
+      // Use large portfolio so annual gains exceed the exemption
+      const withIndex = harvestScenario(500_000, 200_000, 0.10, 10, 'shares', 'opt-out', 0, false, CGT_RATE, 0.02);
+      const withoutIndex = harvestScenario(500_000, 200_000, 0.10, 10, 'shares', 'opt-out', 0, false, CGT_RATE, 0);
+      const taxWith = harvestTotalTax(withIndex);
+      const taxWithout = harvestTotalTax(withoutIndex);
+      assert.true(
+        taxWith < taxWithout,
+        `indexed tax (${taxWith.toFixed(2)}) should be less than non-indexed (${taxWithout.toFixed(2)})`,
+      );
+    });
+
+    test('harvest: 0% indexation matches legacy behavior', function (assert) {
+      const withZero = harvestScenario(100_000, 80_000, 0.07, 5, 'shares', 'opt-out', 0, false, CGT_RATE, 0);
+      const legacy = harvestScenario(100_000, 80_000, 0.07, 5, 'shares', 'opt-out', 0, false, CGT_RATE, 0);
+      for (let i = 0; i < withZero.length; i++) {
+        assert.strictEqual(
+          withZero[i]!.cgtDue, legacy[i]!.cgtDue,
+          `year ${i + 1} CGT should match`,
+        );
+      }
+    });
+
+    test('hold: indexed exemption reduces CGT on final sale', function (assert) {
+      // Hold 10 years with gains → bigger exemption at exit
+      const withIndex = holdScenario(100_000, 80_000, 0.07, 10, 'shares', 'opt-out', 0, false, CGT_RATE, 0.02);
+      const withoutIndex = holdScenario(100_000, 80_000, 0.07, 10, 'shares', 'opt-out', 0, false, CGT_RATE, 0);
+      const taxWith = holdTotalTax(withIndex);
+      const taxWithout = holdTotalTax(withoutIndex);
+      assert.true(
+        taxWith <= taxWithout,
+        `indexed tax (${taxWith.toFixed(2)}) should be <= non-indexed (${taxWithout.toFixed(2)})`,
+      );
+    });
+
+    test('hold: year 10 indexed exemption exceeds non-indexed', function (assert) {
+      const results = holdScenario(200_000, 100_000, 0.07, 10, 'shares', 'opt-out', 0, false, CGT_RATE, 0.02);
+      const resultsNoIndex = holdScenario(200_000, 100_000, 0.07, 10, 'shares', 'opt-out', 0, false, CGT_RATE, 0);
+      const last = results[9]!;
+      const lastNoIndex = resultsNoIndex[9]!;
+      // Indexed exemption should be larger
+      assert.true(
+        last.exemptionUsed > lastNoIndex.exemptionUsed,
+        `indexed exemption (${last.exemptionUsed.toFixed(0)}) > non-indexed (${lastNoIndex.exemptionUsed.toFixed(0)})`,
+      );
+      // Non-indexed max: 10K + 5K = 15K. Indexed should exceed that.
+      assert.true(
+        last.exemptionUsed > 15_000,
+        `indexed exemption (${last.exemptionUsed.toFixed(0)}) > 15K`,
+      );
+    });
+
+    test('smart: indexed exemption sells more to use larger exemption', function (assert) {
+      // With indexation, smart scenario should realize more gains (larger exemption)
+      const withIndex = smartScenario(200_000, 100_000, 0.07, 5, 'shares', 'opt-out', 0, false, CGT_RATE, 0.02);
+      const withoutIndex = smartScenario(200_000, 100_000, 0.07, 5, 'shares', 'opt-out', 0, false, CGT_RATE, 0);
+      // In early years, indexed exemption is larger → smart sells more shares
+      const rg1With = withIndex[0]!.realizedGain;
+      const rg1Without = withoutIndex[0]!.realizedGain;
+      // Year 1: indexFactor = 1.02^0 = 1, so should be equal
+      assert.true(
+        Math.abs(rg1With - rg1Without) < 0.01,
+        'year 1 realized gain should be the same (index factor = 1)',
+      );
+      // Year 2: indexFactor = 1.02 → larger exemption → more gains realized
+      const rg2With = withIndex[1]!.realizedGain;
+      const rg2Without = withoutIndex[1]!.realizedGain;
+      assert.true(
+        rg2With > rg2Without,
+        `year 2 indexed (${rg2With.toFixed(2)}) > non-indexed (${rg2Without.toFixed(2)})`,
+      );
+    });
+
+    test('smart: 0% indexation produces same results as non-indexed', function (assert) {
+      const withZero = smartScenario(200_000, 100_000, 0.07, 5, 'shares', 'opt-out', 0, false, CGT_RATE, 0);
+      const noIndex = smartScenario(200_000, 100_000, 0.07, 5, 'shares', 'opt-out', 0, false, CGT_RATE, 0);
+      for (let i = 0; i < withZero.length; i++) {
+        assert.strictEqual(
+          withZero[i]!.netPortfolioAfterTax,
+          noIndex[i]!.netPortfolioAfterTax,
+          `year ${i + 1} net should match`,
+        );
+      }
+    });
+
+    test('all scenarios: indexed yields higher net than non-indexed', function (assert) {
+      for (const [name, scenarioFn, finalFn] of [
+        ['hold', holdScenario, holdFinalNet] as const,
+        ['harvest', harvestScenario, harvestFinalNet] as const,
+        ['smart', smartScenario, smartFinalNet] as const,
+      ]) {
+        const withIndex = scenarioFn(100_000, 80_000, 0.07, 10, 'shares', 'opt-out', 0, false, CGT_RATE, 0.02);
+        const withoutIndex = scenarioFn(100_000, 80_000, 0.07, 10, 'shares', 'opt-out', 0, false, CGT_RATE, 0);
+        assert.true(
+          finalFn(withIndex) >= finalFn(withoutIndex),
+          `${name}: indexed final >= non-indexed final`,
+        );
+      }
+    });
+
+    test('harvest: carry-forward accumulates with indexed amounts', function (assert) {
+      // No growth → exemption not used → carry-forward builds with indexed amounts
+      const results = harvestScenario(100_000, 100_000, 0, 3, 'shares', 'opt-out', 0, false, CGT_RATE, 0.02);
+      // Year 1: gain=0, cf += 1000*1.02^0 = 1000
+      assert.true(
+        Math.abs(results[0]!.carryForward - 1000) < 0.01,
+        `year 1 CF: ${results[0]!.carryForward}`,
+      );
+      // Year 2: cf += 1000*1.02^1 = 1020, total = 2020
+      assert.true(
+        Math.abs(results[1]!.carryForward - 2020) < 0.01,
+        `year 2 CF: ${results[1]!.carryForward}`,
+      );
+      // Year 3: cf += 1000*1.02^2 = 1040.40, total = 3060.40
+      assert.true(
+        Math.abs(results[2]!.carryForward - 3060.4) < 0.01,
+        `year 3 CF: ${results[2]!.carryForward}`,
+      );
+    });
+
+    test('harvest: high indexation rate (10%) significantly reduces tax', function (assert) {
+      // Use large portfolio so gains consistently exceed the exemption
+      const high = harvestScenario(500_000, 200_000, 0.10, 10, 'shares', 'opt-out', 0, false, CGT_RATE, 0.10);
+      const none = harvestScenario(500_000, 200_000, 0.10, 10, 'shares', 'opt-out', 0, false, CGT_RATE, 0);
+      const taxHigh = harvestTotalTax(high);
+      const taxNone = harvestTotalTax(none);
+      assert.true(
+        taxHigh < taxNone,
+        `10% indexation tax (${taxHigh.toFixed(2)}) should be less than no-indexation (${taxNone.toFixed(2)})`,
+      );
+      // The difference should be meaningful (at least 1%)
+      assert.true(
+        taxNone - taxHigh > taxNone * 0.01,
+        `tax reduction (${(taxNone - taxHigh).toFixed(2)}) should be > 1% of non-indexed tax`,
+      );
+    });
+
+    test('hold with withdrawals: indexed exemption applied correctly', function (assert) {
+      const withIndex = holdScenario(200_000, 100_000, 0.07, 5, 'shares', 'opt-out', -10_000, false, CGT_RATE, 0.02);
+      const withoutIndex = holdScenario(200_000, 100_000, 0.07, 5, 'shares', 'opt-out', -10_000, false, CGT_RATE, 0);
+      const taxWith = holdTotalTax(withIndex);
+      const taxWithout = holdTotalTax(withoutIndex);
+      assert.true(
+        taxWith <= taxWithout,
+        `indexed tax with withdrawals (${taxWith.toFixed(2)}) <= non-indexed (${taxWithout.toFixed(2)})`,
+      );
+    });
+
+    test('default exemptionIndexRate parameter is EXEMPTION_INDEXATION_RATE', function (assert) {
+      // Calling with and without the default parameter should produce same results
+      const explicit = holdScenario(100_000, 80_000, 0.07, 5, 'shares', 'opt-out', 0, false, CGT_RATE, EXEMPTION_INDEXATION_RATE);
+      const implicit = holdScenario(100_000, 80_000, 0.07, 5, 'shares', 'opt-out', 0, false, CGT_RATE);
+      for (let i = 0; i < explicit.length; i++) {
+        assert.strictEqual(
+          explicit[i]!.netPortfolioAfterTax,
+          implicit[i]!.netPortfolioAfterTax,
+          `year ${i + 1} should match`,
+        );
+      }
     });
   });
 });
