@@ -6,6 +6,7 @@ import tailwindcss from '@tailwindcss/vite';
 import Icons from 'unplugin-icons/vite';
 
 export default defineConfig({
+  base: process.env.GITHUB_ACTIONS ? '/belgium-cgt-calculator/' : '/',
   plugins: [
     classicEmberSupport(),
     ember(),
