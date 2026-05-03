@@ -79,6 +79,92 @@ export function computeExemption(
   return { effectiveExemption: totalExemption, newCarryForward: newCF };
 }
 
+// ─── FIFO Lot Tracking ──────────────────────────────────────────
+// Belgian law mandates First-In-First-Out: oldest shares are sold first.
+
+interface Lot {
+  value: number;
+  basis: number;
+}
+
+function lotsValue(lots: Lot[]): number {
+  return lots.reduce((s, l) => s + l.value, 0);
+}
+
+function lotsBasis(lots: Lot[]): number {
+  return lots.reduce((s, l) => s + l.basis, 0);
+}
+
+/** Sell a specific value amount from lots using FIFO order. Mutates the lots array. */
+function sellFifo(
+  lots: Lot[],
+  amount: number,
+): { soldValue: number; soldBasis: number } {
+  let remaining = amount;
+  let soldValue = 0;
+  let soldBasis = 0;
+
+  while (remaining > 0.001 && lots.length > 0) {
+    const lot = lots[0]!;
+    if (lot.value <= 0.001) {
+      lots.shift();
+      continue;
+    }
+    const sell = Math.min(lot.value, remaining);
+    const frac = sell / lot.value;
+    const basis = lot.basis * frac;
+
+    soldValue += sell;
+    soldBasis += basis;
+    lot.value -= sell;
+    lot.basis -= basis;
+    remaining -= sell;
+
+    if (lot.value < 0.001) lots.shift();
+  }
+
+  return { soldValue, soldBasis };
+}
+
+/**
+ * Read-only: calculate how much value must be sold (FIFO order)
+ * to realize a target net gain. Does NOT modify lots.
+ */
+function valueForGainFifo(lots: Lot[], targetGain: number): number {
+  let netGain = 0;
+  let valueSold = 0;
+
+  for (const lot of lots) {
+    if (netGain >= targetGain - 0.001) break;
+
+    const lotGain = lot.value - lot.basis;
+
+    if (netGain + lotGain <= targetGain + 0.001) {
+      valueSold += lot.value;
+      netGain += lotGain;
+    } else {
+      const needGain = targetGain - netGain;
+      if (lotGain > 0) {
+        const frac = needGain / lotGain;
+        valueSold += lot.value * frac;
+      }
+      break;
+    }
+  }
+
+  return valueSold;
+}
+
+/** Reduce all lot values proportionally (e.g. for portfolio tax deduction). */
+function applyDeduction(lots: Lot[], amount: number): void {
+  const total = lotsValue(lots);
+  if (amount <= 0 || total <= 0) return;
+  const factor = Math.max(0, (total - amount) / total);
+  for (const lot of lots) {
+    lot.value *= factor;
+  }
+}
+
 // ─── Scenario: Hold ──────────────────────────────────────────────
 // Buy and hold until final sale at end of period.
 // No CGT or TOB paid until the very end.
@@ -96,8 +182,7 @@ export function holdScenario(
   exemptionIndexRate = EXEMPTION_INDEXATION_RATE,
 ): YearResult[] {
   const results: YearResult[] = [];
-  let value = portfolioValue;
-  let basis = costBasis;
+  const lots: Lot[] = [{ value: portfolioValue, basis: costBasis }];
   let carryForward = 0;
   const pendingRefunds: number[] = [];
 
@@ -106,35 +191,33 @@ export function holdScenario(
     let withdrawalTob = 0;
 
     if (yearlyContribution > 0) {
-      value += yearlyContribution;
-      basis += yearlyContribution;
-    } else if (yearlyContribution < 0 && value > 0) {
-      // Withdrawal = partial sale. Taxes come from sale proceeds, not remaining shares.
-      const actual = Math.min(-yearlyContribution, value);
-      const frac = actual / value;
-      const soldBasis = basis * frac;
-      withdrawalGain = Math.max(0, actual - soldBasis);
-      withdrawalTob = calcTob(actual, tobCategory);
-      // Remaining portfolio: only remove the sold shares (taxes paid from proceeds)
-      value -= actual;
-      basis -= soldBasis;
+      lots.push({ value: yearlyContribution, basis: yearlyContribution });
+    } else if (yearlyContribution < 0 && lotsValue(lots) > 0) {
+      // Withdrawal = partial sale using FIFO (oldest lots sold first).
+      const actual = Math.min(-yearlyContribution, lotsValue(lots));
+      const { soldValue, soldBasis } = sellFifo(lots, actual);
+      withdrawalGain = Math.max(0, soldValue - soldBasis);
+      withdrawalTob = calcTob(soldValue, tobCategory);
     }
 
     // Receive pending refund from broker (arrives ~2 years later)
     let refundReceived = 0;
     if (pendingRefunds.length > 0) {
       refundReceived = pendingRefunds.shift()!;
-      value += refundReceived;
-      basis += refundReceived;
+      lots.push({ value: refundReceived, basis: refundReceived });
     }
 
-    // Apply return on remaining portfolio
-    value *= 1 + expectedReturn;
-    const ug = Math.max(0, value - basis);
+    // Apply return on all remaining lots
+    for (const lot of lots) {
+      lot.value *= 1 + expectedReturn;
+    }
+    let value = lotsValue(lots);
+    const ug = Math.max(0, value - lotsBasis(lots));
 
     // Portfolio tax
     const ptax = calcPortfolioTax(value, includePortfolioTax);
-    value -= ptax;
+    applyDeduction(lots, ptax);
+    value = lotsValue(lots);
 
     const isFinalYear = y === years;
 
@@ -145,8 +228,11 @@ export function holdScenario(
     const indexedMaxCF = MAX_CARRY_FORWARD * indexFactor;
 
     if (isFinalYear) {
-      // Exit: sell everything. Combine withdrawal + exit gains for ONE annual exemption.
-      const totalRealized = withdrawalGain + ug;
+      // Exit: sell everything (FIFO). Combine withdrawal + exit gains for ONE annual exemption.
+      const exitBasis = lotsBasis(lots);
+      sellFifo(lots, value);
+      const exitGain = Math.max(0, value - exitBasis);
+      const totalRealized = withdrawalGain + exitGain;
       const { effectiveExemption } = computeExemption(totalRealized, carryForward, indexedExemption, indexedCFPerYear, indexedMaxCF);
 
       let cgt: number;
@@ -332,7 +418,7 @@ export function harvestScenario(
 }
 
 // ─── Scenario: Smart Harvest ─────────────────────────────────────
-// Sell only enough each year to use the tax-free exemption.
+// Sell only enough each year to use the tax-free exemption (FIFO lot tracking).
 export function smartScenario(
   portfolioValue: number,
   costBasis: number,
@@ -346,31 +432,34 @@ export function smartScenario(
   exemptionIndexRate = EXEMPTION_INDEXATION_RATE,
 ): YearResult[] {
   const results: YearResult[] = [];
-  let value = portfolioValue;
-  let basis = costBasis;
+  const lots: Lot[] = [{ value: portfolioValue, basis: costBasis }];
   let carryForward = 0;
   const pendingRefunds: number[] = [];
 
   for (let y = 1; y <= years; y++) {
-    // Contribution: add new capital + cost basis
+    // Contribution: new lot at cost
     if (yearlyContribution > 0) {
-      value += yearlyContribution;
-      basis += yearlyContribution;
+      lots.push({ value: yearlyContribution, basis: yearlyContribution });
     }
-    value *= 1 + expectedReturn;
+
+    // Apply return to all lots
+    for (const lot of lots) {
+      lot.value *= 1 + expectedReturn;
+    }
 
     // Receive pending refund from 2 years ago (broker mode)
     let refundReceived = 0;
     if (pendingRefunds.length > 0) {
       refundReceived = pendingRefunds.shift()!;
-      value += refundReceived;
-      basis += refundReceived; // refund is not a gain — it's returned overpaid tax
+      lots.push({ value: refundReceived, basis: refundReceived });
     }
 
-    const totalGain = Math.max(0, value - basis);
+    const totalVal = lotsValue(lots);
+    const totalBas = lotsBasis(lots);
+    const totalGain = Math.max(0, totalVal - totalBas);
     // Withdrawal amount needed (0 if contributing or no withdrawal)
     const withdrawalNeeded = yearlyContribution < 0
-      ? Math.min(-yearlyContribution, value)
+      ? Math.min(-yearlyContribution, totalVal)
       : 0;
 
     // Indexed exemption values for this year
@@ -379,51 +468,24 @@ export function smartScenario(
     const indexedCFPerYear = CARRY_FORWARD_PER_YEAR * indexFactor;
     const indexedMaxCF = MAX_CARRY_FORWARD * indexFactor;
 
+    // No gains and no withdrawal: skip
     if (totalGain <= 0 && withdrawalNeeded === 0) {
-      const ptax = calcPortfolioTax(value, includePortfolioTax);
-      value -= ptax;
+      const ptax = calcPortfolioTax(totalVal, includePortfolioTax);
+      applyDeduction(lots, ptax);
       carryForward = Math.min(
         carryForward + indexedCFPerYear,
         indexedMaxCF,
       );
+      const val = lotsValue(lots);
       results.push({
         year: y,
-        portfolioValue: value,
+        portfolioValue: val,
         unrealizedGain: 0,
         realizedGain: 0,
         cgtDue: 0,
         tobPaid: 0,
         portfolioTax: ptax,
-        netPortfolioAfterTax: value,
-        exemptionUsed: 0,
-        carryForward,
-        refundReceived,
-      });
-      continue;
-    }
-
-    // If no gains but withdrawal needed: sell at cost (no CGT), pay TOB
-    if (totalGain <= 0 && withdrawalNeeded > 0) {
-      const tob = calcTob(withdrawalNeeded, tobCategory);
-      const ptax = calcPortfolioTax(value, includePortfolioTax);
-      const frac = withdrawalNeeded / value;
-      value -= withdrawalNeeded + tob + ptax;
-      basis -= basis * frac;
-      if (basis < 0) basis = 0;
-      if (value < 0) value = 0;
-      carryForward = Math.min(
-        carryForward + indexedCFPerYear,
-        indexedMaxCF,
-      );
-      results.push({
-        year: y,
-        portfolioValue: value,
-        unrealizedGain: Math.max(0, value - basis),
-        realizedGain: 0,
-        cgtDue: 0,
-        tobPaid: tob,
-        portfolioTax: ptax,
-        netPortfolioAfterTax: value,
+        netPortfolioAfterTax: val,
         exemptionUsed: 0,
         carryForward,
         refundReceived,
@@ -432,21 +494,55 @@ export function smartScenario(
     }
 
     const effectiveExemption = indexedExemption + carryForward;
-    // Final year: sell everything (exit). Otherwise: sell enough for exemption + withdrawal.
     const isFinalYear = y === years;
-    // Minimum fraction needed to cover the withdrawal
-    const withdrawalFrac = withdrawalNeeded > 0 ? withdrawalNeeded / value : 0;
-    // Smart fraction: sell just enough to realize gains up to exemption
-    const smartFrac = Math.min(1, effectiveExemption / totalGain);
-    // Use whichever is larger: the smart harvest or the withdrawal requirement
-    const frac = isFinalYear ? 1 : Math.min(1, Math.max(smartFrac, withdrawalFrac));
-    const sell = value * frac;
-    const rg = totalGain * frac;
+
+    // Determine how much to sell (FIFO):
+    // - Smart: sell enough (oldest lots first) to realize gains up to exemption
+    // - Withdrawal: sell at least enough to cover withdrawal
+    // - Final year: sell everything
+    let sellAmount: number;
+    if (isFinalYear) {
+      sellAmount = totalVal;
+    } else {
+      const smartSell = totalGain > 0
+        ? valueForGainFifo(lots, Math.min(effectiveExemption, totalGain))
+        : 0;
+      sellAmount = Math.min(totalVal, Math.max(smartSell, withdrawalNeeded));
+    }
+
+    // No sell needed (e.g. totalGain ≤ 0, no withdrawal, not final)
+    if (sellAmount < 0.001 && withdrawalNeeded < 0.001) {
+      const ptax = calcPortfolioTax(totalVal, includePortfolioTax);
+      applyDeduction(lots, ptax);
+      carryForward = Math.min(
+        carryForward + indexedCFPerYear,
+        indexedMaxCF,
+      );
+      const val = lotsValue(lots);
+      results.push({
+        year: y,
+        portfolioValue: val,
+        unrealizedGain: Math.max(0, val - lotsBasis(lots)),
+        realizedGain: 0,
+        cgtDue: 0,
+        tobPaid: 0,
+        portfolioTax: ptax,
+        netPortfolioAfterTax: val,
+        exemptionUsed: 0,
+        carryForward,
+        refundReceived,
+      });
+      continue;
+    }
+
+    // Sell (FIFO)
+    const preSellVal = totalVal;
+    const { soldValue: sell, soldBasis } = sellFifo(lots, sellAmount);
+    const rg = Math.max(0, sell - soldBasis);
     const taxable = Math.max(0, rg - effectiveExemption);
 
     let cgt: number;
     if (brokerMode === 'opt-in') {
-      // Broker withholds 10% of realized gain (ignores exemption)
       cgt = rg * cgtRate;
       const correctTax = taxable * cgtRate;
       const overpaid = cgt - correctTax;
@@ -460,16 +556,21 @@ export function smartScenario(
     const ts = calcTob(sell, tobCategory);
     const tb = calcTob(sell - cgt - ts, tobCategory);
     const tt = ts + tb;
-    const ptax = calcPortfolioTax(value, includePortfolioTax);
+    const ptax = calcPortfolioTax(preSellVal, includePortfolioTax);
 
-    const unsold = value - sell;
-    const uBasis = basis * (1 - frac);
-    // Rebuy: subtract withdrawal from proceeds (withdrawal cash is taken out)
-    const rebuy = sell - (cgt + tt) - withdrawalNeeded;
-    basis = uBasis + Math.max(0, rebuy);
-    value = unsold + Math.max(0, rebuy) - ptax;
-    if (value < 0) value = 0;
-    if (basis < 0) basis = 0;
+    // Rebuy: sell proceeds minus taxes minus withdrawal = new lot at cost
+    const rebuyAmount = sell - (cgt + tt) - withdrawalNeeded;
+    if (rebuyAmount > 0.001) {
+      lots.push({ value: rebuyAmount, basis: rebuyAmount });
+    }
+
+    // Apply portfolio tax to remaining lots
+    applyDeduction(lots, ptax);
+    let value = lotsValue(lots);
+    if (value < 0) {
+      lots.length = 0;
+      value = 0;
+    }
 
     // Smart harvest tries to use exactly the exemption → no carry-forward builds
     if (taxable === 0 && rg < effectiveExemption) {
@@ -484,7 +585,7 @@ export function smartScenario(
     results.push({
       year: y,
       portfolioValue: value,
-      unrealizedGain: Math.max(0, value - basis),
+      unrealizedGain: Math.max(0, value - lotsBasis(lots)),
       realizedGain: rg,
       cgtDue: cgt,
       tobPaid: tt,
