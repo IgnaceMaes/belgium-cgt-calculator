@@ -6,6 +6,10 @@ export const CGT_EXEMPTION = 10_000;
 export const CARRY_FORWARD_PER_YEAR = 1_000; // 1/10th of base exemption
 export const MAX_CARRY_FORWARD = 5_000; // max 5 years of carry-forward
 
+// Taks op effectenrekeningen (portfolio tax)
+export const PORTFOLIO_TAX_RATE = 0.0015; // 0.15%
+export const PORTFOLIO_TAX_THRESHOLD = 1_000_000; // €1M
+
 export const TOB = {
   shares: { rate: 0.0012, cap: 1300 },
   bonds: { rate: 0.0012, cap: 1300 },
@@ -23,10 +27,16 @@ export interface YearResult {
   realizedGain: number;
   cgtDue: number;
   tobPaid: number;
+  portfolioTax: number;
   netPortfolioAfterTax: number;
   exemptionUsed: number;
   carryForward: number;
   refundReceived: number;
+}
+
+export function calcPortfolioTax(value: number, includePortfolioTax: boolean): number {
+  if (!includePortfolioTax) return 0;
+  return value >= PORTFOLIO_TAX_THRESHOLD ? value * PORTFOLIO_TAX_RATE : 0;
 }
 
 export function calcTob(amount: number, category: TobCategory): number {
@@ -71,6 +81,7 @@ export function holdScenario(
   tobCategory: TobCategory,
   _brokerMode: 'opt-in' | 'opt-out',
   yearlyContribution = 0,
+  includePortfolioTax = false,
 ): YearResult[] {
   const results: YearResult[] = [];
   let value = portfolioValue;
@@ -86,6 +97,10 @@ export function holdScenario(
     value *= 1 + expectedReturn;
     const ug = Math.max(0, value - basis);
 
+    // Portfolio tax is paid every year (on total value, not gain)
+    const ptax = calcPortfolioTax(value, includePortfolioTax);
+    value -= ptax;
+
     // Each year we don't sell → exemption carry-forward accumulates
     carryForward = Math.min(carryForward + CARRY_FORWARD_PER_YEAR, MAX_CARRY_FORWARD);
 
@@ -97,6 +112,7 @@ export function holdScenario(
       results.push({
         year: y, portfolioValue: value, unrealizedGain: 0,
         realizedGain: ug, cgtDue: cgt, tobPaid: tob,
+        portfolioTax: ptax,
         netPortfolioAfterTax: value - cgt - tob,
         exemptionUsed: Math.min(ug, effectiveExemption),
         carryForward: 0, refundReceived: 0,
@@ -105,6 +121,7 @@ export function holdScenario(
       results.push({
         year: y, portfolioValue: value, unrealizedGain: ug,
         realizedGain: 0, cgtDue: 0, tobPaid: 0,
+        portfolioTax: ptax,
         netPortfolioAfterTax: value,
         exemptionUsed: 0, carryForward,
         refundReceived: 0,
@@ -124,6 +141,7 @@ export function harvestScenario(
   tobCategory: TobCategory,
   brokerMode: 'opt-in' | 'opt-out',
   yearlyContribution = 0,
+  includePortfolioTax = false,
 ): YearResult[] {
   const results: YearResult[] = [];
   let value = portfolioValue;
@@ -175,7 +193,8 @@ export function harvestScenario(
     const ts = calcTob(value, tobCategory);
     const tb = calcTob(value - cgt - ts, tobCategory);
     const tt = ts + tb;
-    const total = cgt + tt;
+    const ptax = calcPortfolioTax(value, includePortfolioTax);
+    const total = cgt + tt + ptax;
 
     value -= total;
     basis = value;
@@ -183,6 +202,7 @@ export function harvestScenario(
     results.push({
       year: y, portfolioValue: value, unrealizedGain: 0,
       realizedGain: gain, cgtDue: cgt, tobPaid: tt,
+      portfolioTax: ptax,
       netPortfolioAfterTax: value,
       exemptionUsed: brokerMode === 'opt-out' ? Math.min(gain, effectiveExemption) : 0,
       carryForward, refundReceived,
@@ -210,6 +230,7 @@ export function smartScenario(
   tobCategory: TobCategory,
   brokerMode: 'opt-in' | 'opt-out',
   yearlyContribution = 0,
+  includePortfolioTax = false,
 ): YearResult[] {
   const results: YearResult[] = [];
   let value = portfolioValue;
@@ -235,10 +256,13 @@ export function smartScenario(
 
     const totalGain = Math.max(0, value - basis);
     if (totalGain <= 0) {
+      const ptax = calcPortfolioTax(value, includePortfolioTax);
+      value -= ptax;
       carryForward = Math.min(carryForward + CARRY_FORWARD_PER_YEAR, MAX_CARRY_FORWARD);
       results.push({
         year: y, portfolioValue: value, unrealizedGain: 0,
         realizedGain: 0, cgtDue: 0, tobPaid: 0,
+        portfolioTax: ptax,
         netPortfolioAfterTax: value,
         exemptionUsed: 0, carryForward, refundReceived,
       });
@@ -269,13 +293,14 @@ export function smartScenario(
     const ts = calcTob(sell, tobCategory);
     const tb = calcTob(sell - cgt - ts, tobCategory);
     const tt = ts + tb;
-    const tax = cgt + tt;
+    const ptax = calcPortfolioTax(value, includePortfolioTax);
+    const tax = cgt + tt + ptax;
 
     const unsold = value - sell;
     const uBasis = basis * (1 - frac);
-    const rebuy = sell - tax;
+    const rebuy = sell - (cgt + tt);
     basis = uBasis + rebuy;
-    value = unsold + rebuy;
+    value = unsold + rebuy - ptax;
 
     // Smart harvest tries to use exactly the exemption → no carry-forward builds
     if (taxable === 0 && rg < effectiveExemption) {
@@ -287,6 +312,7 @@ export function smartScenario(
     results.push({
       year: y, portfolioValue: value, unrealizedGain: Math.max(0, value - basis),
       realizedGain: rg, cgtDue: cgt, tobPaid: tt,
+      portfolioTax: ptax,
       netPortfolioAfterTax: value,
       exemptionUsed: brokerMode === 'opt-out' ? Math.min(rg, effectiveExemption) : 0,
       carryForward, refundReceived,
@@ -319,13 +345,13 @@ export function smartFinalNet(results: YearResult[]): number {
 }
 
 export function holdTotalTax(results: YearResult[]): number {
-  return results.reduce((s, r) => s + r.cgtDue + r.tobPaid, 0);
+  return results.reduce((s, r) => s + r.cgtDue + r.tobPaid + r.portfolioTax, 0);
 }
 
 export function harvestTotalTax(results: YearResult[]): number {
-  return results.reduce((s, r) => s + r.cgtDue + r.tobPaid - r.refundReceived, 0);
+  return results.reduce((s, r) => s + r.cgtDue + r.tobPaid + r.portfolioTax - r.refundReceived, 0);
 }
 
 export function smartTotalTax(results: YearResult[]): number {
-  return results.reduce((s, r) => s + r.cgtDue + r.tobPaid - r.refundReceived, 0);
+  return results.reduce((s, r) => s + r.cgtDue + r.tobPaid + r.portfolioTax - r.refundReceived, 0);
 }

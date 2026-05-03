@@ -1,6 +1,7 @@
 import { module, test } from 'qunit';
 import {
   calcTob,
+  calcPortfolioTax,
   computeExemption,
   holdScenario,
   harvestScenario,
@@ -15,6 +16,8 @@ import {
   CGT_EXEMPTION,
   CARRY_FORWARD_PER_YEAR,
   MAX_CARRY_FORWARD,
+  PORTFOLIO_TAX_RATE,
+  PORTFOLIO_TAX_THRESHOLD,
   TOB,
 } from 'cgt/utils/tax-calc';
 
@@ -631,6 +634,69 @@ module('Unit | Utils | tax-calc', function () {
       const results = smartScenario(50_000, 49_000, 0.01, 5, 'shares', 'opt-out');
       // Gains are small, so carry-forward should build up
       assert.true(results[3]!.carryForward > 0, 'carry-forward should accumulate');
+    });
+  });
+
+  // ─── Portfolio Tax (Effectenrekening) ────────────────────
+  module('portfolio tax', function () {
+    test('calcPortfolioTax: zero below threshold', function (assert) {
+      assert.strictEqual(calcPortfolioTax(999_999, true), 0);
+      assert.strictEqual(calcPortfolioTax(500_000, true), 0);
+    });
+
+    test('calcPortfolioTax: 0.15% at and above threshold', function (assert) {
+      assert.strictEqual(calcPortfolioTax(1_000_000, true), 1_500);
+      assert.strictEqual(calcPortfolioTax(2_000_000, true), 3_000);
+    });
+
+    test('calcPortfolioTax: disabled returns zero regardless', function (assert) {
+      assert.strictEqual(calcPortfolioTax(2_000_000, false), 0);
+      assert.strictEqual(calcPortfolioTax(1_000_000, false), 0);
+    });
+
+    test('constants are correct', function (assert) {
+      assert.strictEqual(PORTFOLIO_TAX_RATE, 0.0015);
+      assert.strictEqual(PORTFOLIO_TAX_THRESHOLD, 1_000_000);
+    });
+
+    test('hold: portfolio tax reduces final value', function (assert) {
+      const without = holdScenario(1_500_000, 1_500_000, 0.07, 5, 'etfAccLow', 'opt-out', 0, false);
+      const withPtax = holdScenario(1_500_000, 1_500_000, 0.07, 5, 'etfAccLow', 'opt-out', 0, true);
+      assert.true(holdFinalNet(withPtax) < holdFinalNet(without), 'portfolio tax should reduce final net');
+      // Each year should have portfolio tax > 0
+      for (const r of withPtax) {
+        assert.true(r.portfolioTax > 0, `year ${r.year}: should have portfolio tax`);
+      }
+    });
+
+    test('harvest: portfolio tax included in total tax', function (assert) {
+      const withPtax = harvestScenario(1_500_000, 1_500_000, 0.07, 3, 'etfAccLow', 'opt-out', 0, true);
+      const totalPtax = withPtax.reduce((s, r) => s + r.portfolioTax, 0);
+      assert.true(totalPtax > 0, 'should have some portfolio tax');
+      const totalTax = harvestTotalTax(withPtax);
+      assert.true(totalTax > totalPtax, 'total tax should include portfolio tax + CGT + TOB');
+    });
+
+    test('smart: portfolio tax included in total tax', function (assert) {
+      const withPtax = smartScenario(1_500_000, 1_500_000, 0.07, 3, 'etfAccLow', 'opt-out', 0, true);
+      const totalPtax = withPtax.reduce((s, r) => s + r.portfolioTax, 0);
+      assert.true(totalPtax > 0, 'should have some portfolio tax');
+    });
+
+    test('below threshold: no portfolio tax even when enabled', function (assert) {
+      const results = holdScenario(100_000, 100_000, 0.07, 5, 'etfAccLow', 'opt-out', 0, true);
+      for (const r of results) {
+        assert.strictEqual(r.portfolioTax, 0, `year ${r.year}: no portfolio tax below €1M`);
+      }
+    });
+
+    test('portfolio grows past threshold mid-simulation', function (assert) {
+      // Start at 800K, 7% return, 50K/yr contribution → should cross 1M
+      const results = holdScenario(800_000, 800_000, 0.07, 5, 'etfAccLow', 'opt-out', 50_000, true);
+      const earlyYears = results.filter(r => r.portfolioTax === 0);
+      const lateYears = results.filter(r => r.portfolioTax > 0);
+      assert.true(lateYears.length > 0, 'should start paying portfolio tax after crossing 1M');
+      assert.true(earlyYears.length > 0 || results[0]!.portfolioValue >= 1_000_000, 'should have some years below or start above');
     });
   });
 });

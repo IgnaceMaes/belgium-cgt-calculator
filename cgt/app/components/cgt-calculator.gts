@@ -16,6 +16,7 @@ import {
   holdFinalNet, harvestFinalNet, smartFinalNet,
   holdTotalTax, harvestTotalTax, smartTotalTax,
   calcTob, CGT_RATE, CGT_EXEMPTION,
+  PORTFOLIO_TAX_RATE, PORTFOLIO_TAX_THRESHOLD,
 } from '@/utils/tax-calc';
 
 // ─── Colors ──────────────────────────────────────────────────────
@@ -308,6 +309,7 @@ export default class CgtCalculator extends Component {
   @tracked yearlyContribution = 10_000;
   @tracked tobCategory: TobCategory = 'etfAccLow';
   @tracked brokerReporting: 'opt-in' | 'opt-out' = 'opt-in';
+  @tracked includePortfolioTax = false;
   @tracked showDetails = false;
   @tracked isDark = true;
 
@@ -342,15 +344,15 @@ export default class CgtCalculator extends Component {
   // ─── Scenarios ─────────────────────────────────────────────
 
   get holdResults(): YearResult[] {
-    return holdScenario(this.portfolioValue, this.costBasis, this.expectedReturn, this.yearsToProject, this.tobCategory, this.brokerReporting, this.yearlyContribution);
+    return holdScenario(this.portfolioValue, this.costBasis, this.expectedReturn, this.yearsToProject, this.tobCategory, this.brokerReporting, this.yearlyContribution, this.includePortfolioTax);
   }
 
   get harvestResults(): YearResult[] {
-    return harvestScenario(this.portfolioValue, this.costBasis, this.expectedReturn, this.yearsToProject, this.tobCategory, this.brokerReporting, this.yearlyContribution);
+    return harvestScenario(this.portfolioValue, this.costBasis, this.expectedReturn, this.yearsToProject, this.tobCategory, this.brokerReporting, this.yearlyContribution, this.includePortfolioTax);
   }
 
   get smartResults(): YearResult[] {
-    return smartScenario(this.portfolioValue, this.costBasis, this.expectedReturn, this.yearsToProject, this.tobCategory, this.brokerReporting, this.yearlyContribution);
+    return smartScenario(this.portfolioValue, this.costBasis, this.expectedReturn, this.yearsToProject, this.tobCategory, this.brokerReporting, this.yearlyContribution, this.includePortfolioTax);
   }
 
   // ─── Final values ──────────────────────────────────────────
@@ -431,6 +433,7 @@ export default class CgtCalculator extends Component {
   onTob = (v: TobCategory) => { this.tobCategory = v; };
   onBroker = (v: 'opt-in' | 'opt-out') => { this.brokerReporting = v; };
   toggleDetails = () => { this.showDetails = !this.showDetails; };
+  togglePortfolioTax = () => { this.includePortfolioTax = !this.includePortfolioTax; };
 
   // ─── Helpers ───────────────────────────────────────────────
 
@@ -637,6 +640,38 @@ export default class CgtCalculator extends Component {
                 "You declare and pay via your annual tax return. You can offset losses, apply the €10K exemption optimally across your full portfolio, and avoid lending money to the government interest-free."}}
             </p>
           </div>
+
+          {{! Portfolio tax }}
+          <div class="space-y-2.5">
+            <div class="flex items-center gap-1.5">
+              <Label class="text-xs text-muted-foreground">Portfolio tax (effectenrekening)</Label>
+              <Tooltip>
+                <TooltipTrigger>
+                  <svg class="h-3.5 w-3.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg>
+                </TooltipTrigger>
+                <TooltipContent @side="top" class="max-w-xs">The taks op effectenrekeningen is a 0.15% annual tax on securities accounts valued above €1,000,000. It applies to the total account value, not just the excess. Assessed on average quarterly reference points.</TooltipContent>
+              </Tooltip>
+            </div>
+            <div class="flex gap-2">
+              <button type="button"
+                class="rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200
+                  {{if this.includePortfolioTax
+                    'border-primary bg-primary text-primary-foreground shadow-sm'
+                    'border-border text-muted-foreground hover:border-foreground/20 hover:bg-accent'}}"
+                {{on "click" this.togglePortfolioTax}}>Include (≥ €1M)</button>
+              <button type="button"
+                class="rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200
+                  {{unless this.includePortfolioTax
+                    'border-primary bg-primary text-primary-foreground shadow-sm'
+                    'border-border text-muted-foreground hover:border-foreground/20 hover:bg-accent'}}"
+                {{on "click" this.togglePortfolioTax}}>Exclude</button>
+            </div>
+            {{#if this.includePortfolioTax}}
+              <p class="text-xs text-muted-foreground leading-relaxed">
+                0.15% per year on the total account value when it exceeds €1,000,000. This is deducted annually from your portfolio, reducing your compounding base.
+              </p>
+            {{/if}}
+          </div>
         </section>
 
         {{! ═══ RESULTS CARDS ═══ }}
@@ -790,6 +825,9 @@ export default class CgtCalculator extends Component {
                           <th class="px-4 py-2.5 text-right font-medium text-muted-foreground uppercase tracking-wider text-[10px]">Gain</th>
                           <th class="px-4 py-2.5 text-right font-medium text-muted-foreground uppercase tracking-wider text-[10px]">CGT</th>
                           <th class="px-4 py-2.5 text-right font-medium text-muted-foreground uppercase tracking-wider text-[10px]">TOB</th>
+                          {{#if this.includePortfolioTax}}
+                            <th class="px-4 py-2.5 text-right font-medium text-muted-foreground uppercase tracking-wider text-[10px]">PTax</th>
+                          {{/if}}
                           <th class="px-4 py-2.5 text-right font-medium text-muted-foreground uppercase tracking-wider text-[10px]">Net</th>
                         </tr>
                       </thead>
@@ -801,6 +839,9 @@ export default class CgtCalculator extends Component {
                             <td class="px-4 py-2 text-right tabular-nums">{{this.f row.realizedGain}}</td>
                             <td class="px-4 py-2 text-right tabular-nums">{{this.f row.cgtDue}}</td>
                             <td class="px-4 py-2 text-right tabular-nums">{{this.f row.tobPaid}}</td>
+                            {{#if this.includePortfolioTax}}
+                              <td class="px-4 py-2 text-right tabular-nums">{{this.f row.portfolioTax}}</td>
+                            {{/if}}
                             <td class="px-4 py-2 text-right tabular-nums font-medium">{{this.f row.netPortfolioAfterTax}}</td>
                           </tr>
                         {{/each}}
