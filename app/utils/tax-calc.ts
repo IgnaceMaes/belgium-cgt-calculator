@@ -297,7 +297,6 @@ export function smartScenario(
     const tb = calcTob(sell - cgt - ts, tobCategory);
     const tt = ts + tb;
     const ptax = calcPortfolioTax(value, includePortfolioTax);
-    const tax = cgt + tt + ptax;
 
     const unsold = value - sell;
     const uBasis = basis * (1 - frac);

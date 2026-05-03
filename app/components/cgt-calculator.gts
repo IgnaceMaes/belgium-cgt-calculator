@@ -15,7 +15,6 @@ import {
   holdScenario, harvestScenario, smartScenario,
   holdFinalNet, harvestFinalNet, smartFinalNet,
   holdTotalTax, harvestTotalTax, smartTotalTax,
-  PORTFOLIO_TAX_RATE, PORTFOLIO_TAX_THRESHOLD,
 } from '@/utils/tax-calc';
 
 // ─── Colors ──────────────────────────────────────────────────────
@@ -38,10 +37,6 @@ function fmtK(v: number): string {
   if (Math.abs(v) >= 1_000) return `€${(v / 1_000).toFixed(0)}K`;
   return fmt(v);
 }
-
-// ─── Info icon helper ─────────────────────────────────────────────
-
-const INFO_ICON = `<svg class="h-3.5 w-3.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg>`;
 
 // ─── Line Chart ───────────────────────────────────────────────────
 
@@ -313,7 +308,7 @@ export default class CgtCalculator extends Component {
   @tracked showDetails = false;
   @tracked isDark = true;
 
-  syncTheme = modifier((el: Element) => {
+  syncTheme = modifier(() => {
     const apply = () => {
       document.documentElement.classList.toggle('light', !this.isDark);
     };

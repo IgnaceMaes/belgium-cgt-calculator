@@ -109,7 +109,9 @@ module('Unit | Utils | tax-calc', function () {
         assert.strictEqual(results[i]!.tobPaid, 0, `year ${i + 1} TOB should be 0`);
       }
       // Final year should have some tax
-      assert.true(results[4]!.cgtDue > 0 || results[4]!.tobPaid > 0, 'final year has tax');
+      const finalYear = results[4]!;
+      const hasTax = finalYear.cgtDue > 0 || finalYear.tobPaid > 0;
+      assert.true(hasTax, 'final year has tax');
     });
 
     test('carry-forward accumulates each year (max 5K)', function (assert) {
@@ -228,11 +230,11 @@ module('Unit | Utils | tax-calc', function () {
 
     test('broker opt-in: CGT is always 10% of realized gain', function (assert) {
       const results = smartScenario(200_000, 100_000, 0.07, 5, 'shares', 'opt-in');
-      for (const r of results) {
-        if (r.realizedGain > 0) {
-          assert.true(Math.abs(r.cgtDue - r.realizedGain * CGT_RATE) < 1,
-            `year ${r.year}: CGT should be 10% of realized gain`);
-        }
+      const withGains = results.filter(r => r.realizedGain > 0);
+      assert.true(withGains.length > 0, 'should have years with gains');
+      for (const r of withGains) {
+        assert.true(Math.abs(r.cgtDue - r.realizedGain * CGT_RATE) < 1,
+          `year ${r.year}: CGT should be 10% of realized gain`);
       }
     });
   });
@@ -300,7 +302,6 @@ module('Unit | Utils | tax-calc', function () {
     test('broker opt-in: pending refunds flushed into final year', function (assert) {
       // With only 3 years, year 3 overpayment can't be refunded in time
       const results = harvestScenario(200_000, 100_000, 0.07, 3, 'shares', 'opt-in');
-      const last = results[2]!;
       // Last year should have refund received (flushed pending)
       const totalRefunds = results.reduce((s, r) => s + r.refundReceived, 0);
       assert.true(totalRefunds > 0, 'some refunds should have been received or flushed');
@@ -438,7 +439,9 @@ module('Unit | Utils | tax-calc', function () {
     test('1 year scenario', function (assert) {
       const hold = holdScenario(100_000, 80_000, 0.07, 1, 'shares', 'opt-out');
       assert.strictEqual(hold.length, 1);
-      assert.true(hold[0]!.cgtDue > 0 || hold[0]!.realizedGain > 0, 'final year has tax event');
+      const year = hold[0]!;
+      const hasTaxEvent = year.cgtDue > 0 || year.realizedGain > 0;
+      assert.true(hasTaxEvent, 'final year has tax event');
     });
   });
 
@@ -696,7 +699,9 @@ module('Unit | Utils | tax-calc', function () {
       const earlyYears = results.filter(r => r.portfolioTax === 0);
       const lateYears = results.filter(r => r.portfolioTax > 0);
       assert.true(lateYears.length > 0, 'should start paying portfolio tax after crossing 1M');
-      assert.true(earlyYears.length > 0 || results[0]!.portfolioValue >= 1_000_000, 'should have some years below or start above');
+      const startsAbove = results[0]!.portfolioValue >= 1_000_000;
+      const hasBelowYears = earlyYears.length > 0 || startsAbove;
+      assert.true(hasBelowYears, 'should have some years below or start above');
     });
   });
 });

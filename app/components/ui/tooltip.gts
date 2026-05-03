@@ -226,7 +226,7 @@ class TooltipContent extends Component<TooltipContentSignature> {
       'left-end': 'left-end',
     };
 
-    const placement = placementMap[`${side}-${align}`] || ('top' as Placement);
+    const placement = placementMap[`${side}-${align}`] || 'top';
 
     const update = () => {
       void computePosition(triggerElement, element, {
