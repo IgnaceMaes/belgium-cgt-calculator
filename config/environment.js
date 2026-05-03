@@ -4,7 +4,7 @@ module.exports = function (environment) {
   const ENV = {
     modulePrefix: 'cgt',
     environment,
-    rootURL: '/',
+    rootURL: process.env.GITHUB_ACTIONS ? '/belgium-cgt-calculator/' : '/',
     locationType: 'history',
     EmberENV: {
       EXTEND_PROTOTYPES: false,
