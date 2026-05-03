@@ -363,6 +363,14 @@ export default class CgtCalculator extends Component {
   get harvestTotalTax() { return harvestTotalTax(this.harvestResults); }
   get smartTotalTax() { return smartTotalTax(this.smartResults); }
 
+  get totalInvested() { return this.costBasis + this.yearlyContribution * this.yearsToProject; }
+  get holdGrossProfit() { return this.holdFinal + this.holdTotalTax - this.totalInvested; }
+  get harvestGrossProfit() { return this.harvestFinal + this.harvestTotalTax - this.totalInvested; }
+  get smartGrossProfit() { return this.smartFinal + this.smartTotalTax - this.totalInvested; }
+  get holdProfit() { return this.holdFinal - this.totalInvested; }
+  get harvestProfit() { return this.harvestFinal - this.totalInvested; }
+  get smartProfit() { return this.smartFinal - this.totalInvested; }
+
   get smartVsHold() { return this.smartFinal - this.holdFinal; }
 
   get bestStrategy(): 'hold' | 'harvest' | 'smart' {
@@ -643,7 +651,12 @@ export default class CgtCalculator extends Component {
                 Hold
               </div>
               <div class="text-2xl font-semibold tabular-nums text-foreground">{{this.f this.holdFinal}}</div>
-              <div class="text-xs text-muted-foreground mt-1">Tax: {{this.f this.holdTotalTax}}</div>
+              <div class="mt-3 space-y-1 text-xs text-muted-foreground">
+                <div class="flex justify-between"><span>Invested</span><span class="tabular-nums">{{this.f this.totalInvested}}</span></div>
+                <div class="flex justify-between"><span>Gross profit</span><span class="tabular-nums {{if (this.isPos this.holdGrossProfit) 'text-emerald-400' 'text-red-400'}}">{{if (this.isPos this.holdGrossProfit) "+" ""}}{{this.f this.holdGrossProfit}}</span></div>
+                <div class="flex justify-between"><span>Tax paid</span><span class="tabular-nums text-orange-400">−{{this.f this.holdTotalTax}}</span></div>
+                <div class="flex justify-between border-t border-border pt-1 mt-1"><span class="font-medium text-foreground">Net profit</span><span class="tabular-nums font-medium {{if (this.isPos this.holdProfit) 'text-emerald-400' 'text-red-400'}}">{{if (this.isPos this.holdProfit) "+" ""}}{{this.f this.holdProfit}}</span></div>
+              </div>
             </div>
 
             {{! Full harvest }}
@@ -659,7 +672,12 @@ export default class CgtCalculator extends Component {
                 Full harvest
               </div>
               <div class="text-2xl font-semibold tabular-nums text-foreground">{{this.f this.harvestFinal}}</div>
-              <div class="text-xs text-muted-foreground mt-1">Tax: {{this.f this.harvestTotalTax}}</div>
+              <div class="mt-3 space-y-1 text-xs text-muted-foreground">
+                <div class="flex justify-between"><span>Invested</span><span class="tabular-nums">{{this.f this.totalInvested}}</span></div>
+                <div class="flex justify-between"><span>Gross profit</span><span class="tabular-nums {{if (this.isPos this.harvestGrossProfit) 'text-emerald-400' 'text-red-400'}}">{{if (this.isPos this.harvestGrossProfit) "+" ""}}{{this.f this.harvestGrossProfit}}</span></div>
+                <div class="flex justify-between"><span>Tax paid</span><span class="tabular-nums text-orange-400">−{{this.f this.harvestTotalTax}}</span></div>
+                <div class="flex justify-between border-t border-border pt-1 mt-1"><span class="font-medium text-foreground">Net profit</span><span class="tabular-nums font-medium {{if (this.isPos this.harvestProfit) 'text-emerald-400' 'text-red-400'}}">{{if (this.isPos this.harvestProfit) "+" ""}}{{this.f this.harvestProfit}}</span></div>
+              </div>
             </div>
 
             {{! Smart harvest }}
@@ -675,7 +693,12 @@ export default class CgtCalculator extends Component {
                 Smart harvest
               </div>
               <div class="text-2xl font-semibold tabular-nums text-foreground">{{this.f this.smartFinal}}</div>
-              <div class="text-xs text-muted-foreground mt-1">Tax: {{this.f this.smartTotalTax}}</div>
+              <div class="mt-3 space-y-1 text-xs text-muted-foreground">
+                <div class="flex justify-between"><span>Invested</span><span class="tabular-nums">{{this.f this.totalInvested}}</span></div>
+                <div class="flex justify-between"><span>Gross profit</span><span class="tabular-nums {{if (this.isPos this.smartGrossProfit) 'text-emerald-400' 'text-red-400'}}">{{if (this.isPos this.smartGrossProfit) "+" ""}}{{this.f this.smartGrossProfit}}</span></div>
+                <div class="flex justify-between"><span>Tax paid</span><span class="tabular-nums text-orange-400">−{{this.f this.smartTotalTax}}</span></div>
+                <div class="flex justify-between border-t border-border pt-1 mt-1"><span class="font-medium text-foreground">Net profit</span><span class="tabular-nums font-medium {{if (this.isPos this.smartProfit) 'text-emerald-400' 'text-red-400'}}">{{if (this.isPos this.smartProfit) "+" ""}}{{this.f this.smartProfit}}</span></div>
+              </div>
             </div>
           </div>
 
