@@ -82,6 +82,7 @@ export function holdScenario(
   _brokerMode: 'opt-in' | 'opt-out',
   yearlyContribution = 0,
   includePortfolioTax = false,
+  cgtRate = CGT_RATE,
 ): YearResult[] {
   const results: YearResult[] = [];
   let value = portfolioValue;
@@ -107,7 +108,7 @@ export function holdScenario(
     // At final year, compute the CGT + TOB for the exit sale
     if (y === years) {
       const { effectiveExemption } = computeExemption(ug, carryForward);
-      const cgt = Math.max(0, ug - effectiveExemption) * CGT_RATE;
+      const cgt = Math.max(0, ug - effectiveExemption) * cgtRate;
       const tob = calcTob(value, tobCategory);
       results.push({
         year: y, portfolioValue: value, unrealizedGain: 0,
@@ -142,6 +143,7 @@ export function harvestScenario(
   brokerMode: 'opt-in' | 'opt-out',
   yearlyContribution = 0,
   includePortfolioTax = false,
+  cgtRate = CGT_RATE,
 ): YearResult[] {
   const results: YearResult[] = [];
   let value = portfolioValue;
@@ -177,9 +179,9 @@ export function harvestScenario(
     let cgt: number;
     if (brokerMode === 'opt-in') {
       // Broker withholds 10% of full gain (no exemption, no loss offset)
-      cgt = gain * CGT_RATE;
+      cgt = gain * cgtRate;
       // Schedule refund for overpaid amount (will arrive ~2 years later)
-      const correctTax = Math.max(0, gain - effectiveExemption) * CGT_RATE;
+      const correctTax = Math.max(0, gain - effectiveExemption) * cgtRate;
       const overpaid = cgt - correctTax;
       if (overpaid > 0) {
         pendingRefunds.push(overpaid);
@@ -187,7 +189,7 @@ export function harvestScenario(
     } else {
       // Self-report: apply exemption immediately
       const taxable = Math.max(0, gain - effectiveExemption);
-      cgt = taxable * CGT_RATE;
+      cgt = taxable * cgtRate;
     }
 
     const ts = calcTob(value, tobCategory);
@@ -231,6 +233,7 @@ export function smartScenario(
   brokerMode: 'opt-in' | 'opt-out',
   yearlyContribution = 0,
   includePortfolioTax = false,
+  cgtRate = CGT_RATE,
 ): YearResult[] {
   const results: YearResult[] = [];
   let value = portfolioValue;
@@ -280,14 +283,14 @@ export function smartScenario(
     let cgt: number;
     if (brokerMode === 'opt-in') {
       // Broker withholds 10% of realized gain (ignores exemption)
-      cgt = rg * CGT_RATE;
-      const correctTax = taxable * CGT_RATE;
+      cgt = rg * cgtRate;
+      const correctTax = taxable * cgtRate;
       const overpaid = cgt - correctTax;
       if (overpaid > 0) {
         pendingRefunds.push(overpaid);
       }
     } else {
-      cgt = taxable * CGT_RATE;
+      cgt = taxable * cgtRate;
     }
 
     const ts = calcTob(sell, tobCategory);

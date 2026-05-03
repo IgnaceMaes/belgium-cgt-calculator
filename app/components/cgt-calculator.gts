@@ -15,7 +15,6 @@ import {
   holdScenario, harvestScenario, smartScenario,
   holdFinalNet, harvestFinalNet, smartFinalNet,
   holdTotalTax, harvestTotalTax, smartTotalTax,
-  calcTob, CGT_RATE, CGT_EXEMPTION,
   PORTFOLIO_TAX_RATE, PORTFOLIO_TAX_THRESHOLD,
 } from '@/utils/tax-calc';
 
@@ -310,6 +309,7 @@ export default class CgtCalculator extends Component {
   @tracked tobCategory: TobCategory = 'etfAccLow';
   @tracked brokerReporting: 'opt-in' | 'opt-out' = 'opt-in';
   @tracked includePortfolioTax = false;
+  @tracked cgtRate = 0.10;
   @tracked showDetails = false;
   @tracked isDark = true;
 
@@ -330,6 +330,7 @@ export default class CgtCalculator extends Component {
 
   get currentGain() { return Math.max(0, this.portfolioValue - this.costBasis); }
   get expectedReturnPct() { return Math.round(this.expectedReturn * 1000) / 10; }
+  get cgtRatePct() { return Math.round(this.cgtRate * 1000) / 10; }
 
   get tobOptions() {
     return [
@@ -344,15 +345,15 @@ export default class CgtCalculator extends Component {
   // ─── Scenarios ─────────────────────────────────────────────
 
   get holdResults(): YearResult[] {
-    return holdScenario(this.portfolioValue, this.costBasis, this.expectedReturn, this.yearsToProject, this.tobCategory, this.brokerReporting, this.yearlyContribution, this.includePortfolioTax);
+    return holdScenario(this.portfolioValue, this.costBasis, this.expectedReturn, this.yearsToProject, this.tobCategory, this.brokerReporting, this.yearlyContribution, this.includePortfolioTax, this.cgtRate);
   }
 
   get harvestResults(): YearResult[] {
-    return harvestScenario(this.portfolioValue, this.costBasis, this.expectedReturn, this.yearsToProject, this.tobCategory, this.brokerReporting, this.yearlyContribution, this.includePortfolioTax);
+    return harvestScenario(this.portfolioValue, this.costBasis, this.expectedReturn, this.yearsToProject, this.tobCategory, this.brokerReporting, this.yearlyContribution, this.includePortfolioTax, this.cgtRate);
   }
 
   get smartResults(): YearResult[] {
-    return smartScenario(this.portfolioValue, this.costBasis, this.expectedReturn, this.yearsToProject, this.tobCategory, this.brokerReporting, this.yearlyContribution, this.includePortfolioTax);
+    return smartScenario(this.portfolioValue, this.costBasis, this.expectedReturn, this.yearsToProject, this.tobCategory, this.brokerReporting, this.yearlyContribution, this.includePortfolioTax, this.cgtRate);
   }
 
   // ─── Final values ──────────────────────────────────────────
@@ -432,6 +433,7 @@ export default class CgtCalculator extends Component {
   onYears = (e: Event) => { this.yearsToProject = Math.min(30, Math.max(1, Number((e.target as HTMLInputElement).value) || 1)); };
   onTob = (v: TobCategory) => { this.tobCategory = v; };
   onBroker = (v: 'opt-in' | 'opt-out') => { this.brokerReporting = v; };
+  onCgtRate = (e: Event) => { this.cgtRate = (Number((e.target as HTMLInputElement).value) || 0) / 100; };
   toggleDetails = () => { this.showDetails = !this.showDetails; };
   togglePortfolioTax = () => { this.includePortfolioTax = !this.includePortfolioTax; };
 
@@ -448,6 +450,11 @@ export default class CgtCalculator extends Component {
   };
   get isBrokerOptIn() { return this.brokerReporting === 'opt-in'; }
   get isBrokerOptOut() { return this.brokerReporting === 'opt-out'; }
+  get brokerDescription() {
+    return this.isBrokerOptIn
+      ? `Broker deducts ${this.cgtRatePct}% on every profitable sale, ignoring the €10K exemption and any losses. You claim the exemption back via your annual tax return, but the refund takes ~1.5–2 years. This means overpaid tax doesn't compound in your favor during that period.`
+      : 'You declare and pay via your annual tax return. You can offset losses, apply the €10K exemption optimally across your full portfolio, and avoid lending money to the government interest-free.';
+  }
 
   get detailSections() {
     return [
@@ -487,7 +494,7 @@ export default class CgtCalculator extends Component {
             Capital Gains<br />Tax Calculator
           </h1>
           <p class="mx-auto max-w-lg text-base text-muted-foreground leading-relaxed">
-            Compare hold vs. harvest strategies under Belgium's new 10% CGT.
+            Compare hold vs. harvest strategies under Belgium's new CGT.
             Find out if annual gain harvesting saves you money after TOB costs.
           </p>
         </header>
@@ -582,6 +589,23 @@ export default class CgtCalculator extends Component {
                   {{this.euroMask this.setContribution this.yearlyContribution}} />
               </div>
             </div>
+            <div class="space-y-2">
+              <div class="flex items-center gap-1.5">
+                <Label class="text-xs text-muted-foreground">CGT rate</Label>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <svg class="h-3.5 w-3.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg>
+                  </TooltipTrigger>
+                  <TooltipContent @side="top">Capital gains tax rate applied to realized gains above the exemption. Belgian law sets this at 10%.</TooltipContent>
+                </Tooltip>
+              </div>
+              <div class="relative">
+                <Input @type="number" value={{this.cgtRatePct}} step="0.5" min="0" max="100"
+                  class="tabular-nums pr-7"
+                  {{on "input" this.onCgtRate}} />
+                <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+              </div>
+            </div>
           </div>
 
           {{! TOB category }}
@@ -635,9 +659,7 @@ export default class CgtCalculator extends Component {
                 {{on "click" (fn this.onBroker "opt-out")}}>Self-report</button>
             </div>
             <p class="text-xs text-muted-foreground leading-relaxed">
-              {{if this.isBrokerOptIn
-                "Broker deducts 10% on every profitable sale, ignoring the €10K exemption and any losses. You claim the exemption back via your annual tax return, but the refund takes ~1.5–2 years. This means overpaid tax doesn't compound in your favor during that period."
-                "You declare and pay via your annual tax return. You can offset losses, apply the €10K exemption optimally across your full portfolio, and avoid lending money to the government interest-free."}}
+              {{this.brokerDescription}}
             </p>
           </div>
 
@@ -770,7 +792,7 @@ export default class CgtCalculator extends Component {
                 <div class="h-2 w-2 rounded-full" style="background:#ec4899"></div>
                 <span class="text-xs font-medium text-foreground">Full harvest</span>
               </div>
-              <p class="text-xs text-muted-foreground leading-relaxed">Sell everything each year and immediately rebuy. This realizes all gains annually, using the €10K exemption each year. Unused exemption carries forward (€1K/year, max €5K extra). But you pay TOB on every sell &amp; buy cycle, and gains above the exemption are taxed at 10%. Assumes you can rebuy at the same price you sold — in practice there may be a small spread.</p>
+              <p class="text-xs text-muted-foreground leading-relaxed">Sell everything each year and immediately rebuy. This realizes all gains annually, using the €10K exemption each year. Unused exemption carries forward (€1K/year, max €5K extra). But you pay TOB on every sell &amp; buy cycle, and gains above the exemption are taxed at {{this.cgtRatePct}}%. Assumes you can rebuy at the same price you sold — in practice there may be a small spread.</p>
             </div>
             <div class="space-y-2">
               <div class="flex items-center gap-2">
@@ -861,8 +883,8 @@ export default class CgtCalculator extends Component {
               <svg class="h-2.5 w-2.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             </div>
             <div class="text-xs text-muted-foreground space-y-1 leading-relaxed">
-              <p><span class="text-foreground font-medium">Key rules:</span> 10% CGT on realized gains · €10K/year exempt (unused €1K carries forward, max €5K extra) · losses offset gains within the same year only · TOB on every buy &amp; sell</p>
-              <p><span class="text-foreground font-medium">Note:</span> The hold scenario defers all CGT to the final sale. Harvest scenarios pay CGT each year but reset the cost basis, using the exemption annually. Broker opt-in withholds 10% on all gains upfront; you reclaim the exemption via your tax return ~2 years later. Harvest and smart harvest assume you can rebuy at the same price you sold — in practice, the bid-ask spread and intraday price movement may cause small deviations.</p>
+              <p><span class="text-foreground font-medium">Key rules:</span> {{this.cgtRatePct}}% CGT on realized gains · €10K/year exempt (unused €1K carries forward, max €5K extra) · losses offset gains within the same year only · TOB on every buy &amp; sell</p>
+              <p><span class="text-foreground font-medium">Note:</span> The hold scenario defers all CGT to the final sale. Harvest scenarios pay CGT each year but reset the cost basis, using the exemption annually. Broker opt-in withholds {{this.cgtRatePct}}% on all gains upfront; you reclaim the exemption via your tax return ~2 years later. Harvest and smart harvest assume you can rebuy at the same price you sold — in practice, the bid-ask spread and intraday price movement may cause small deviations.</p>
               <p><span class="text-foreground font-medium">Disclaimer:</span> Estimates only. Based on the Belgian Arizona coalition tax reform proposal. Consult a tax advisor for your specific situation.</p>
             </div>
           </div>
