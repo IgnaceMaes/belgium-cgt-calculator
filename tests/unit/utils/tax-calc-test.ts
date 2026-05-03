@@ -1299,4 +1299,283 @@ module('Unit | Utils | tax-calc', function () {
       assert.true(hasBelowYears, 'should have some years below or start above');
     });
   });
+
+  // ─── Withdrawals (negative contributions) ───────────────
+
+  module('withdrawals', function () {
+    test('hold: withdrawal reduces portfolio value', function (assert) {
+      const withW = holdScenario(200_000, 100_000, 0.07, 5, 'shares', 'opt-out', -10_000);
+      const without = holdScenario(200_000, 100_000, 0.07, 5, 'shares', 'opt-out', 0);
+      assert.true(
+        holdFinalNet(withW) < holdFinalNet(without),
+        'withdrawals should reduce final net',
+      );
+    });
+
+    test('hold: withdrawal triggers TOB from sale', function (assert) {
+      const results = holdScenario(200_000, 100_000, 0.07, 5, 'shares', 'opt-out', -5_000);
+      const nonFinal = results.slice(0, -1);
+      const hasTob = nonFinal.some((r) => r.tobPaid > 0);
+      assert.true(hasTob, 'withdrawal should trigger TOB in hold scenario');
+    });
+
+    test('hold: withdrawal from at-cost portfolio → no CGT, only TOB', function (assert) {
+      const results = holdScenario(100_000, 100_000, 0, 3, 'shares', 'opt-out', -10_000);
+      for (const r of results.slice(0, -1)) {
+        assert.strictEqual(r.cgtDue, 0, `year ${r.year}: no CGT when no gain`);
+        assert.true(r.tobPaid > 0, `year ${r.year}: TOB paid on withdrawal sale`);
+      }
+    });
+
+    test('hold: withdrawal taxes come from sale proceeds, not remaining portfolio', function (assert) {
+      // 100K portfolio at cost, 0% return, withdraw 10K
+      // After withdrawal: remaining should be exactly 90K (taxes from proceeds)
+      const results = holdScenario(100_000, 100_000, 0, 1, 'shares', 'opt-out', -10_000);
+      // Year 1 is also the final year, so it includes exit sale
+      // With 0% return and 0 gain, CGT = 0. TOB on exit of the remaining 90K.
+      const y1 = results[0]!;
+      // Portfolio after withdrawal should be 90K (before exit)
+      // Exit TOB: calcTob(90K, 'shares') = 108
+      // Withdrawal TOB: calcTob(10K, 'shares') = 12
+      assert.true(
+        Math.abs(y1.tobPaid - (108 + 12)) < 1,
+        `TOB should be ~120, got ${y1.tobPaid}`,
+      );
+      // Net = 90K - 0 (CGT) - 108 (exit TOB) = 89,892
+      assert.true(
+        Math.abs(y1.netPortfolioAfterTax - (90_000 - 108)) < 1,
+        `net should be ~89,892, got ${y1.netPortfolioAfterTax}`,
+      );
+    });
+
+    test('hold: at-cost withdrawal preserves basis == value on remaining', function (assert) {
+      // 100K at cost, 0% return, withdraw 10K
+      // After withdrawal: value = 90K, basis = 90K → unrealized = 0
+      const results = holdScenario(100_000, 100_000, 0, 3, 'shares', 'opt-out', -10_000);
+      for (const r of results.slice(0, -1)) {
+        assert.strictEqual(r.unrealizedGain, 0, `year ${r.year}: no phantom unrealized gain`);
+      }
+    });
+
+    test('hold: withdrawal with gain realizes proportional gain only', function (assert) {
+      // 200K portfolio, 100K basis (100% gain). Withdraw 20K (10% of portfolio).
+      // Proportional gain on 20K sold = 20K - (100K * 0.1) = 20K - 10K = 10K realized
+      // With 0% return so gain doesn't change
+      const results = holdScenario(200_000, 100_000, 0, 2, 'shares', 'opt-out', -20_000);
+      const y1 = results[0]!;
+      assert.true(
+        Math.abs(y1.realizedGain - 10_000) < 1,
+        `realized gain should be ~10K (proportional), got ${y1.realizedGain}`,
+      );
+      // Remaining: value = 180K, basis = 90K, unrealized = 90K
+      assert.true(
+        Math.abs(y1.unrealizedGain - 90_000) < 1,
+        `unrealized should be ~90K, got ${y1.unrealizedGain}`,
+      );
+    });
+
+    test('hold: final year combines withdrawal + exit for ONE exemption', function (assert) {
+      // 1-year hold with 200K portfolio, 100K basis, 0% return, withdraw 20K
+      // Withdrawal: frac = 20K/200K = 0.1, gain = 20K - 10K = 10K
+      // Exit: remaining 180K, basis 90K, gain = 90K
+      // Total realized = 10K + 90K = 100K
+      // ONE exemption = 10K (no carry-forward)
+      // CGT = (100K - 10K) * 10% = 9K
+      const results = holdScenario(200_000, 100_000, 0, 1, 'shares', 'opt-out', -20_000);
+      const y1 = results[0]!;
+      assert.true(
+        Math.abs(y1.realizedGain - 100_000) < 1,
+        `total realized should be ~100K, got ${y1.realizedGain}`,
+      );
+      assert.true(
+        Math.abs(y1.cgtDue - 9_000) < 1,
+        `CGT should be ~9K (single exemption on combined gain), got ${y1.cgtDue}`,
+      );
+    });
+
+    test('hold: final year does NOT double-dip exemption', function (assert) {
+      // Verify we don't get two €10K exemptions in the same year
+      // 1 year, 150K value, 50K basis (100K gain), withdraw 30K
+      // Withdrawal gain: 30K * (100K/150K) = 20K
+      // Exit gain on remaining: (150K - 30K) - (50K - 10K) = 120K - 40K = 80K
+      // Total = 100K, ONE exemption = 10K, CGT = 9K
+      // If double-dipping: withdrawal uses 10K, exit uses 10K → CGT = 8K (WRONG)
+      const results = holdScenario(150_000, 50_000, 0, 1, 'shares', 'opt-out', -30_000);
+      const y1 = results[0]!;
+      const expectedCgt = (y1.realizedGain - CGT_EXEMPTION) * CGT_RATE;
+      assert.true(
+        Math.abs(y1.cgtDue - expectedCgt) < 1,
+        `CGT should use single exemption: expected ${expectedCgt.toFixed(0)}, got ${y1.cgtDue.toFixed(0)}`,
+      );
+    });
+
+    test('harvest: withdrawal reduces rebuy amount', function (assert) {
+      const withW = harvestScenario(200_000, 100_000, 0.07, 5, 'shares', 'opt-out', -10_000);
+      const without = harvestScenario(200_000, 100_000, 0.07, 5, 'shares', 'opt-out', 0);
+      assert.true(
+        harvestFinalNet(withW) < harvestFinalNet(without),
+        'withdrawals should reduce final net',
+      );
+    });
+
+    test('harvest: withdrawal clamped to available proceeds', function (assert) {
+      // Small portfolio, large withdrawal
+      const results = harvestScenario(20_000, 20_000, 0, 3, 'shares', 'opt-out', -100_000);
+      for (const r of results) {
+        assert.true(r.portfolioValue >= 0, `year ${r.year}: portfolio >= 0`);
+      }
+    });
+
+    test('smart: withdrawal forces selling more than exemption', function (assert) {
+      const results = smartScenario(500_000, 200_000, 0.07, 5, 'shares', 'opt-out', -50_000);
+      const nonFinal = results.slice(0, -1);
+      const hasHighGains = nonFinal.some((r) => r.realizedGain > CGT_EXEMPTION);
+      assert.true(hasHighGains, 'large withdrawal should force selling beyond exemption');
+    });
+
+    test('smart: withdrawal reduces final net', function (assert) {
+      const withW = smartScenario(200_000, 100_000, 0.07, 5, 'shares', 'opt-out', -10_000);
+      const without = smartScenario(200_000, 100_000, 0.07, 5, 'shares', 'opt-out', 0);
+      assert.true(
+        smartFinalNet(withW) < smartFinalNet(without),
+        'withdrawals should reduce final net',
+      );
+    });
+
+    test('all scenarios: portfolio never goes negative with withdrawals', function (assert) {
+      const scenarios = [
+        holdScenario(50_000, 30_000, 0.05, 10, 'shares', 'opt-out', -20_000),
+        harvestScenario(50_000, 30_000, 0.05, 10, 'shares', 'opt-out', -20_000),
+        smartScenario(50_000, 30_000, 0.05, 10, 'shares', 'opt-out', -20_000),
+      ];
+      for (const results of scenarios) {
+        for (const r of results) {
+          assert.true(r.portfolioValue >= 0, `year ${r.year}: portfolio >= 0`);
+          assert.true(r.netPortfolioAfterTax >= 0, `year ${r.year}: net >= 0`);
+        }
+      }
+    });
+
+    test('withdrawal capped at portfolio value (cannot overdraw)', function (assert) {
+      const results = holdScenario(100_000, 50_000, 0.05, 3, 'shares', 'opt-out', -200_000);
+      for (const r of results) {
+        assert.true(r.portfolioValue >= 0, `year ${r.year}: portfolio >= 0`);
+      }
+    });
+
+    test('hold: carry-forward accumulates correctly with withdrawals', function (assert) {
+      // Withdraw small amount from at-cost portfolio (0 gain realized)
+      // Exemption unused → carry-forward should still accumulate
+      const results = holdScenario(100_000, 100_000, 0.01, 5, 'shares', 'opt-out', -1_000);
+      // Year 1: withdrawal gain ≈ 0 (at cost), exemption unused
+      assert.strictEqual(results[0]!.carryForward, CARRY_FORWARD_PER_YEAR,
+        'carry-forward should accumulate when exemption unused');
+      // Year 3: should have 3K carry-forward
+      assert.strictEqual(results[2]!.carryForward, 3 * CARRY_FORWARD_PER_YEAR);
+    });
+
+    test('hold: withdrawal with gains consumes exemption, resets carry-forward', function (assert) {
+      // Large gains, withdrawal realizes > exemption
+      const results = holdScenario(500_000, 100_000, 0.1, 3, 'shares', 'opt-out', -100_000);
+      const y1 = results[0]!;
+      // Withdrawal: 100K/500K = 20%, soldBasis = 20K, gain = 80K > 10K exemption
+      assert.true(y1.realizedGain > CGT_EXEMPTION, 'gain exceeds exemption');
+      assert.true(y1.cgtDue > 0, 'CGT charged on gain above exemption');
+      assert.strictEqual(y1.carryForward, 0, 'carry-forward reset when exemption fully used');
+    });
+
+    test('hold: broker mode withholds on withdrawal gain', function (assert) {
+      // 200K portfolio, 100K basis, 10K withdrawal
+      const results = holdScenario(200_000, 100_000, 0, 2, 'shares', 'opt-in', -20_000);
+      const y1 = results[0]!;
+      // Withdrawal: frac = 20K/200K = 0.1, gain = 20K - 10K = 10K
+      // Broker withholds 10% of 10K = 1K
+      assert.true(
+        Math.abs(y1.cgtDue - 1_000) < 1,
+        `broker should withhold ~1K, got ${y1.cgtDue}`,
+      );
+    });
+
+    test('smart: no-gain withdrawal only pays TOB', function (assert) {
+      // 100K at cost, 0% return, withdraw 10K
+      const results = smartScenario(100_000, 100_000, 0, 3, 'shares', 'opt-out', -10_000);
+      for (const r of results.slice(0, -1)) {
+        assert.strictEqual(r.cgtDue, 0, `year ${r.year}: no CGT when no gain`);
+      }
+    });
+  });
+
+  // ─── Arithmetic invariants ──────────────────────────────
+
+  module('arithmetic invariants', function () {
+    test('hold without withdrawal: basis <= value at all times', function (assert) {
+      const results = holdScenario(100_000, 80_000, 0.07, 10, 'shares', 'opt-out');
+      for (const r of results.slice(0, -1)) {
+        assert.true(
+          r.unrealizedGain >= 0,
+          `year ${r.year}: unrealized gain should be non-negative`,
+        );
+      }
+    });
+
+    test('hold with at-cost withdrawal: remaining basis == remaining value', function (assert) {
+      // When basis == value and return == 0, withdrawals should keep basis == value
+      const results = holdScenario(100_000, 100_000, 0, 5, 'shares', 'opt-out', -5_000);
+      for (const r of results.slice(0, -1)) {
+        assert.strictEqual(
+          r.unrealizedGain, 0,
+          `year ${r.year}: no gain when at cost with 0% return`,
+        );
+      }
+    });
+
+    test('smart: unrealized gain is never negative', function (assert) {
+      const results = smartScenario(200_000, 100_000, 0.07, 10, 'shares', 'opt-out', -5_000);
+      for (const r of results) {
+        assert.true(
+          r.unrealizedGain >= 0,
+          `year ${r.year}: unrealized gain >= 0`,
+        );
+      }
+    });
+
+    test('harvest: unrealized gain is always 0 (everything sold)', function (assert) {
+      const results = harvestScenario(100_000, 80_000, 0.07, 5, 'shares', 'opt-out', -3_000);
+      for (const r of results) {
+        assert.strictEqual(r.unrealizedGain, 0, `year ${r.year}: unrealized = 0`);
+      }
+    });
+
+    test('all scenarios: CGT is never negative', function (assert) {
+      const configs: [number, number, number, number, number][] = [
+        [100_000, 100_000, 0.07, 5, -10_000],
+        [200_000, 50_000, -0.05, 10, -5_000],
+        [50_000, 50_000, 0, 3, -20_000],
+      ];
+      for (const [pv, cb, ret, yrs, w] of configs) {
+        for (const fn of [holdScenario, harvestScenario, smartScenario]) {
+          const results = fn(pv, cb, ret, yrs, 'shares', 'opt-out', w);
+          for (const r of results) {
+            assert.true(r.cgtDue >= 0, `CGT >= 0 (year ${r.year})`);
+            assert.true(r.tobPaid >= 0, `TOB >= 0 (year ${r.year})`);
+          }
+        }
+      }
+    });
+
+    test('hold: total withdrawn + remaining + taxes = initial + growth', function (assert) {
+      // 100K at cost, 0% return, 10K/yr withdrawal, 5 years
+      // Year 1: withdraw 10K, remaining 90K → grow 0% → 90K
+      // Year 2: withdraw 10K, remaining 80K → etc
+      // After 5 years: 50K remaining (before exit tax)
+      const results = holdScenario(100_000, 100_000, 0, 5, 'shares', 'opt-out', -10_000);
+      const lastYear = results[4]!;
+      // Remaining portfolio before exit tax should be ~50K
+      // (minus accumulated withdrawal TOB costs which come from sale proceeds)
+      assert.true(
+        lastYear.portfolioValue > 40_000 && lastYear.portfolioValue <= 50_000,
+        `remaining should be ~50K, got ${lastYear.portfolioValue}`,
+      );
+    });
+  });
 });

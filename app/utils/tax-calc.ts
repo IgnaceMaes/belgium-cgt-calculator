@@ -44,7 +44,7 @@ export function calcPortfolioTax(
 
 export function calcTob(amount: number, category: TobCategory): number {
   const { rate, cap } = TOB[category];
-  return Math.min(amount * rate, cap);
+  return Math.min(Math.max(0, amount) * rate, cap);
 }
 
 /**
@@ -85,7 +85,7 @@ export function holdScenario(
   expectedReturn: number,
   years: number,
   tobCategory: TobCategory,
-  _brokerMode: 'opt-in' | 'opt-out',
+  brokerMode: 'opt-in' | 'opt-out',
   yearlyContribution = 0,
   includePortfolioTax = false,
   cgtRate = CGT_RATE,
@@ -94,60 +94,117 @@ export function holdScenario(
   let value = portfolioValue;
   let basis = costBasis;
   let carryForward = 0;
+  const pendingRefunds: number[] = [];
 
   for (let y = 1; y <= years; y++) {
-    // Add yearly contribution at start of year (new money = new cost basis)
+    let withdrawalGain = 0;
+    let withdrawalTob = 0;
+
     if (yearlyContribution > 0) {
       value += yearlyContribution;
       basis += yearlyContribution;
+    } else if (yearlyContribution < 0 && value > 0) {
+      // Withdrawal = partial sale. Taxes come from sale proceeds, not remaining shares.
+      const actual = Math.min(-yearlyContribution, value);
+      const frac = actual / value;
+      const soldBasis = basis * frac;
+      withdrawalGain = Math.max(0, actual - soldBasis);
+      withdrawalTob = calcTob(actual, tobCategory);
+      // Remaining portfolio: only remove the sold shares (taxes paid from proceeds)
+      value -= actual;
+      basis -= soldBasis;
     }
+
+    // Receive pending refund from broker (arrives ~2 years later)
+    let refundReceived = 0;
+    if (pendingRefunds.length > 0) {
+      refundReceived = pendingRefunds.shift()!;
+      value += refundReceived;
+      basis += refundReceived;
+    }
+
+    // Apply return on remaining portfolio
     value *= 1 + expectedReturn;
     const ug = Math.max(0, value - basis);
 
-    // Portfolio tax is paid every year (on total value, not gain)
+    // Portfolio tax
     const ptax = calcPortfolioTax(value, includePortfolioTax);
     value -= ptax;
 
-    // Each year we don't sell → exemption carry-forward accumulates
-    carryForward = Math.min(
-      carryForward + CARRY_FORWARD_PER_YEAR,
-      MAX_CARRY_FORWARD,
-    );
+    const isFinalYear = y === years;
 
-    // At final year, compute the CGT + TOB for the exit sale
-    if (y === years) {
-      const { effectiveExemption } = computeExemption(ug, carryForward);
-      const cgt = Math.max(0, ug - effectiveExemption) * cgtRate;
-      const tob = calcTob(value, tobCategory);
+    if (isFinalYear) {
+      // Exit: sell everything. Combine withdrawal + exit gains for ONE annual exemption.
+      const totalRealized = withdrawalGain + ug;
+      const { effectiveExemption } = computeExemption(totalRealized, carryForward);
+
+      let cgt: number;
+      if (brokerMode === 'opt-in') {
+        cgt = totalRealized * cgtRate;
+        const correctTax = Math.max(0, totalRealized - effectiveExemption) * cgtRate;
+        const overpaid = cgt - correctTax;
+        if (overpaid > 0) pendingRefunds.push(overpaid);
+      } else {
+        cgt = Math.max(0, totalRealized - effectiveExemption) * cgtRate;
+      }
+
+      const exitTob = calcTob(value, tobCategory);
+
       results.push({
         year: y,
         portfolioValue: value,
         unrealizedGain: 0,
-        realizedGain: ug,
+        realizedGain: totalRealized,
         cgtDue: cgt,
-        tobPaid: tob,
+        tobPaid: exitTob + withdrawalTob,
         portfolioTax: ptax,
-        netPortfolioAfterTax: value - cgt - tob,
-        exemptionUsed: Math.min(ug, effectiveExemption),
+        netPortfolioAfterTax: value - cgt - exitTob,
+        exemptionUsed: Math.min(totalRealized, effectiveExemption),
         carryForward: 0,
-        refundReceived: 0,
+        refundReceived,
       });
     } else {
+      // Non-final year: only the withdrawal is a realization event
+      const { effectiveExemption, newCarryForward } = computeExemption(withdrawalGain, carryForward);
+
+      let cgt = 0;
+      if (withdrawalGain > 0) {
+        if (brokerMode === 'opt-in') {
+          cgt = withdrawalGain * cgtRate;
+          const correctTax = Math.max(0, withdrawalGain - effectiveExemption) * cgtRate;
+          const overpaid = cgt - correctTax;
+          if (overpaid > 0) pendingRefunds.push(overpaid);
+        } else {
+          cgt = Math.max(0, withdrawalGain - effectiveExemption) * cgtRate;
+        }
+      }
+
+      carryForward = newCarryForward;
+
       results.push({
         year: y,
         portfolioValue: value,
         unrealizedGain: ug,
-        realizedGain: 0,
-        cgtDue: 0,
-        tobPaid: 0,
+        realizedGain: withdrawalGain,
+        cgtDue: cgt,
+        tobPaid: withdrawalTob,
         portfolioTax: ptax,
         netPortfolioAfterTax: value,
-        exemptionUsed: 0,
+        exemptionUsed: withdrawalGain > 0 ? Math.min(withdrawalGain, effectiveExemption) : 0,
         carryForward,
-        refundReceived: 0,
+        refundReceived,
       });
     }
   }
+
+  // Flush remaining pending refunds
+  const totalPending = pendingRefunds.reduce((s, r) => s + r, 0);
+  if (totalPending > 0 && results.length > 0) {
+    const last = results[results.length - 1]!;
+    last.netPortfolioAfterTax += totalPending;
+    last.refundReceived += totalPending;
+  }
+
   return results;
 }
 
@@ -172,7 +229,7 @@ export function harvestScenario(
   const pendingRefunds: number[] = [];
 
   for (let y = 1; y <= years; y++) {
-    // Add yearly contribution at start of year
+    // Contribution: add new capital + cost basis
     if (yearlyContribution > 0) {
       value += yearlyContribution;
       basis += yearlyContribution;
@@ -219,6 +276,11 @@ export function harvestScenario(
     const total = cgt + tt + ptax;
 
     value -= total;
+    // Withdrawal: taken from proceeds after selling (reduces rebuy amount)
+    if (yearlyContribution < 0) {
+      const withdrawal = Math.min(-yearlyContribution, value);
+      value -= withdrawal;
+    }
     basis = value;
 
     results.push({
@@ -268,7 +330,7 @@ export function smartScenario(
   const pendingRefunds: number[] = [];
 
   for (let y = 1; y <= years; y++) {
-    // Add yearly contribution at start of year
+    // Contribution: add new capital + cost basis
     if (yearlyContribution > 0) {
       value += yearlyContribution;
       basis += yearlyContribution;
@@ -284,7 +346,12 @@ export function smartScenario(
     }
 
     const totalGain = Math.max(0, value - basis);
-    if (totalGain <= 0) {
+    // Withdrawal amount needed (0 if contributing or no withdrawal)
+    const withdrawalNeeded = yearlyContribution < 0
+      ? Math.min(-yearlyContribution, value)
+      : 0;
+
+    if (totalGain <= 0 && withdrawalNeeded === 0) {
       const ptax = calcPortfolioTax(value, includePortfolioTax);
       value -= ptax;
       carryForward = Math.min(
@@ -307,10 +374,44 @@ export function smartScenario(
       continue;
     }
 
+    // If no gains but withdrawal needed: sell at cost (no CGT), pay TOB
+    if (totalGain <= 0 && withdrawalNeeded > 0) {
+      const tob = calcTob(withdrawalNeeded, tobCategory);
+      const ptax = calcPortfolioTax(value, includePortfolioTax);
+      const frac = withdrawalNeeded / value;
+      value -= withdrawalNeeded + tob + ptax;
+      basis -= basis * frac;
+      if (basis < 0) basis = 0;
+      if (value < 0) value = 0;
+      carryForward = Math.min(
+        carryForward + CARRY_FORWARD_PER_YEAR,
+        MAX_CARRY_FORWARD,
+      );
+      results.push({
+        year: y,
+        portfolioValue: value,
+        unrealizedGain: Math.max(0, value - basis),
+        realizedGain: 0,
+        cgtDue: 0,
+        tobPaid: tob,
+        portfolioTax: ptax,
+        netPortfolioAfterTax: value,
+        exemptionUsed: 0,
+        carryForward,
+        refundReceived,
+      });
+      continue;
+    }
+
     const effectiveExemption = CGT_EXEMPTION + carryForward;
-    // Final year: sell everything (exit). Otherwise: sell just enough to use exemption.
+    // Final year: sell everything (exit). Otherwise: sell enough for exemption + withdrawal.
     const isFinalYear = y === years;
-    const frac = isFinalYear ? 1 : Math.min(1, effectiveExemption / totalGain);
+    // Minimum fraction needed to cover the withdrawal
+    const withdrawalFrac = withdrawalNeeded > 0 ? withdrawalNeeded / value : 0;
+    // Smart fraction: sell just enough to realize gains up to exemption
+    const smartFrac = Math.min(1, effectiveExemption / totalGain);
+    // Use whichever is larger: the smart harvest or the withdrawal requirement
+    const frac = isFinalYear ? 1 : Math.min(1, Math.max(smartFrac, withdrawalFrac));
     const sell = value * frac;
     const rg = totalGain * frac;
     const taxable = Math.max(0, rg - effectiveExemption);
@@ -335,9 +436,12 @@ export function smartScenario(
 
     const unsold = value - sell;
     const uBasis = basis * (1 - frac);
-    const rebuy = sell - (cgt + tt);
-    basis = uBasis + rebuy;
-    value = unsold + rebuy - ptax;
+    // Rebuy: subtract withdrawal from proceeds (withdrawal cash is taken out)
+    const rebuy = sell - (cgt + tt) - withdrawalNeeded;
+    basis = uBasis + Math.max(0, rebuy);
+    value = unsold + Math.max(0, rebuy) - ptax;
+    if (value < 0) value = 0;
+    if (basis < 0) basis = 0;
 
     // Smart harvest tries to use exactly the exemption → no carry-forward builds
     if (taxable === 0 && rg < effectiveExemption) {

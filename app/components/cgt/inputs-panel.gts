@@ -64,6 +64,26 @@ export default class InputsPanel extends Component<InputsPanelSignature> {
     },
   );
 
+  signedEuroMask = modifier(
+    (
+      el: HTMLInputElement,
+      [setValue, initial]: [(v: number) => void, number],
+    ) => {
+      const mask = IMask(el, {
+        mask: Number,
+        thousandsSeparator: '.',
+        radix: ',',
+        scale: 0,
+        signed: true,
+        min: -999_999_999,
+        max: 999_999_999,
+      });
+      mask.typedValue = initial;
+      mask.on('accept', () => setValue(mask.typedValue));
+      return () => mask.destroy();
+    },
+  );
+
   get tobOptions(): TobOption[] {
     return [
       { value: 'shares', label: 'Shares', detail: '0.12%' },
@@ -226,7 +246,7 @@ export default class InputsPanel extends Component<InputsPanelSignature> {
 
         <div class="space-y-2">
           <div class="flex items-center gap-1.5">
-            <Label class="text-xs text-muted-foreground">Yearly contribution</Label>
+            <Label class="text-xs text-muted-foreground">Yearly contribution / withdrawal</Label>
             <Tooltip>
               <TooltipTrigger>
                 <svg
@@ -239,8 +259,8 @@ export default class InputsPanel extends Component<InputsPanelSignature> {
                     d="M12 16v-4m0-4h.01"
                   /></svg>
               </TooltipTrigger>
-              <TooltipContent @side="top">Additional capital invested each year.
-                This amount is added at the start of each year and increases
+              <TooltipContent @side="top">Additional capital invested (positive) or withdrawn (negative) each year.
+                This amount is applied at the start of each year and adjusts
                 your cost basis accordingly.</TooltipContent>
             </Tooltip>
           </div>
@@ -252,7 +272,7 @@ export default class InputsPanel extends Component<InputsPanelSignature> {
               @type="text"
               inputmode="numeric"
               class="tabular-nums pl-7"
-              {{this.euroMask @onContribution @yearlyContribution}}
+              {{this.signedEuroMask @onContribution @yearlyContribution}}
             />
           </div>
         </div>
