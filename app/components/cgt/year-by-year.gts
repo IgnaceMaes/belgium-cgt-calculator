@@ -1,4 +1,5 @@
 import Component from '@glimmer/component';
+import { htmlSafe } from '@ember/template';
 import { on } from '@ember/modifier';
 import type { YearResult } from '@/utils/tax-calc';
 import { fmt } from '@/utils/format';
@@ -20,6 +21,7 @@ interface YearByYearSignature {
 
 export default class YearByYear extends Component<YearByYearSignature> {
   f = (v: number) => fmt(v);
+  bgStyle = (color: string) => htmlSafe(`background:${color}`);
 
   <template>
     <section>
@@ -52,7 +54,7 @@ export default class YearByYear extends Component<YearByYearSignature> {
               <div class="flex items-center gap-2">
                 <div
                   class="h-2 w-2 rounded-full"
-                  style="background:{{section.color}}"
+                  style={{this.bgStyle section.color}}
                 ></div>
                 <h3
                   class="text-sm font-medium text-foreground"

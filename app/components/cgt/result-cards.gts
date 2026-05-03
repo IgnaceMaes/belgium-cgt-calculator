@@ -1,4 +1,5 @@
 import Component from '@glimmer/component';
+import { htmlSafe } from '@ember/template';
 import { Badge } from '@/components/ui/badge';
 import { fmt } from '@/utils/format';
 
@@ -28,6 +29,7 @@ interface ResultCardSignature {
 export default class ResultCards extends Component<ResultCardSignature> {
   f = (v: number) => fmt(v);
   isPos = (v: number) => v >= 0;
+  bgStyle = (color: string) => htmlSafe(`background:${color}`);
 
   isBest = (key: string) => {
     const { bestStrategy, harvestEqualsSmart } = this.args;
@@ -59,7 +61,7 @@ export default class ResultCards extends Component<ResultCardSignature> {
             >
               <div
                 class="h-2 w-2 rounded-full"
-                style="background:{{s.color}}"
+                style={{this.bgStyle s.color}}
               ></div>
               {{s.name}}
             </div>

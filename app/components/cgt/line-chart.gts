@@ -1,5 +1,6 @@
 import Component from '@glimmer/component';
 import { tracked } from '@glimmer/tracking';
+import { htmlSafe } from '@ember/template';
 import { on } from '@ember/modifier';
 import { fmtK } from '@/utils/format';
 
@@ -110,6 +111,7 @@ export default class LineChart extends Component<LineChartSignature> {
     return p ? [p] : [];
   };
   fmtTick = (v: number) => fmtK(v);
+  bgStyle = (color: string) => htmlSafe(`background:${color}`);
 
   onMouseMove = (e: MouseEvent) => {
     const svg = e.currentTarget as SVGSVGElement;
@@ -207,10 +209,12 @@ export default class LineChart extends Component<LineChartSignature> {
 
   <template>
     <div class="w-full" ...attributes>
+      {{! template-lint-disable no-invalid-interactive }}
       <svg
         viewBox="0 0 {{this.w}} {{this.h}}"
         class="w-full h-auto"
         preserveAspectRatio="xMidYMid meet"
+        role="img"
         {{on "mousemove" this.onMouseMove}}
         {{on "mouseleave" this.onMouseLeave}}
       >
@@ -400,7 +404,7 @@ export default class LineChart extends Component<LineChartSignature> {
           <div class="flex items-center gap-1.5">
             <div
               class="h-2 w-2 rounded-full"
-              style="background:{{s.color}}"
+              style={{this.bgStyle s.color}}
             ></div>
             <span class="text-muted-foreground">{{s.label}}</span>
           </div>

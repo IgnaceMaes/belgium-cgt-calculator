@@ -1,4 +1,5 @@
 import Component from '@glimmer/component';
+import { htmlSafe } from '@ember/template';
 import { fmt } from '@/utils/format';
 
 export interface BarItem {
@@ -18,6 +19,7 @@ export default class BarChart extends Component<BarChartSignature> {
   }
   pct = (v: number) => `${((v / this.maxVal) * 100).toFixed(1)}%`;
   fmtV = (v: number) => fmt(v);
+  barStyle = (value: number, color: string) => htmlSafe(`width:${this.pct(value)};background:${color}`);
 
   <template>
     <div class="space-y-4" ...attributes>
@@ -32,7 +34,7 @@ export default class BarChart extends Component<BarChartSignature> {
           <div class="h-1.5 w-full overflow-hidden rounded-full bg-muted">
             <div
               class="h-full rounded-full transition-all duration-700 ease-out"
-              style="width:{{this.pct item.value}};background:{{item.color}}"
+              style={{this.barStyle item.value item.color}}
             ></div>
           </div>
         </div>

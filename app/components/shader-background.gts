@@ -1,5 +1,6 @@
 import Component from '@glimmer/component';
 import { modifier } from 'ember-modifier';
+import { htmlSafe } from '@ember/template';
 import { createShader } from 'shaders/js';
 
 interface ShaderBackgroundSignature {
@@ -67,7 +68,7 @@ export default class ShaderBackground extends Component<ShaderBackgroundSignatur
     {{#if this.isVisible}}
       <canvas
         class="shader-canvas pointer-events-none fixed inset-0 -z-10 transition-opacity duration-500"
-        style="width: 100vw; height: 100dvh;"
+        style={{htmlSafe "width: 100vw; height: 100dvh;"}}
         {{this.setupShader}}
         ...attributes
       ></canvas>

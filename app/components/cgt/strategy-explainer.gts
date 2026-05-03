@@ -1,4 +1,5 @@
 import Component from '@glimmer/component';
+import { htmlSafe } from '@ember/template';
 import { HOLD_COLOR, HARVEST_COLOR, SMART_COLOR } from '@/utils/colors';
 
 interface StrategyExplainerSignature {
@@ -9,6 +10,7 @@ export default class StrategyExplainer extends Component<StrategyExplainerSignat
   holdColor = HOLD_COLOR;
   harvestColor = HARVEST_COLOR;
   smartColor = SMART_COLOR;
+  bgStyle = (color: string) => htmlSafe(`background:${color}`);
 
   <template>
     <section
@@ -20,7 +22,7 @@ export default class StrategyExplainer extends Component<StrategyExplainerSignat
           <div class="flex items-center gap-2">
             <div
               class="h-2 w-2 rounded-full"
-              style="background:{{this.holdColor}}"
+              style={{this.bgStyle this.holdColor}}
             ></div>
             <span class="text-xs font-medium text-foreground">Hold</span>
           </div>
@@ -34,7 +36,7 @@ export default class StrategyExplainer extends Component<StrategyExplainerSignat
           <div class="flex items-center gap-2">
             <div
               class="h-2 w-2 rounded-full"
-              style="background:{{this.harvestColor}}"
+              style={{this.bgStyle this.harvestColor}}
             ></div>
             <span class="text-xs font-medium text-foreground">Full harvest</span>
           </div>
@@ -50,7 +52,7 @@ export default class StrategyExplainer extends Component<StrategyExplainerSignat
           <div class="flex items-center gap-2">
             <div
               class="h-2 w-2 rounded-full"
-              style="background:{{this.smartColor}}"
+              style={{this.bgStyle this.smartColor}}
             ></div>
             <span class="text-xs font-medium text-foreground">Smart harvest</span>
           </div>
