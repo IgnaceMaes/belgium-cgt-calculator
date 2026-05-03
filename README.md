@@ -1,55 +1,41 @@
-# cgt
+# 🇧🇪 Belgium Capital Gains Tax Calculator
 
-This README outlines the details of collaborating on this Ember application.
-A short introduction of this app could easily go here.
+> Compare hold vs. harvest strategies under Belgium's new capital gains tax.
 
-## Prerequisites
+A client-side simulator that projects how different sell/rebuy strategies affect your portfolio over time — factoring in CGT, TOB, exemptions, carry-forward, broker withholding refunds, and portfolio tax.
 
-You will need the following things properly installed on your computer.
+**[→ Try it live](https://ignacemaes.github.io/belgium-cgt-calculator/)**
 
-- [Git](https://git-scm.com/)
-- [Node.js](https://nodejs.org/)
-- [pnpm](https://pnpm.io/)
-- [Google Chrome](https://google.com/chrome/)
+## Strategies
 
-## Installation
+| Strategy | Description |
+|---|---|
+| **Hold** | Buy and hold until exit. All gains compound untaxed, but you forfeit the annual exemption. |
+| **Full Harvest** | Sell everything yearly and rebuy. Uses the €10K exemption each year, but pays TOB on every cycle. |
+| **Smart Harvest** | Sell only enough to realize gains up to the exemption. Minimizes TOB while harvesting the tax-free allowance. |
 
-- `git clone <repository-url>` this repository
-- `cd cgt`
-- `pnpm install`
+## Tax Rules Modeled
 
-## Running / Development
+- **CGT** — configurable rate (default 10%) on realized gains above the exemption
+- **Exemption** — €10K/year, with €1K/year carry-forward (max €5K)
+- **TOB** — transaction tax on every buy & sell (0.12% or 1.32% depending on instrument)
+- **Broker withholding** — opt-in mode withholds CGT on full gain, refund ~2 years later
+- **Portfolio tax** — 0.15% annually on accounts ≥ €1M
 
-- `pnpm start`
-- Visit your app at [http://localhost:4200](http://localhost:4200).
-- Visit your tests at [http://localhost:4200/tests](http://localhost:4200/tests).
+## Tech
 
-### Code Generators
+Built with [Ember.js](https://emberjs.com/) · [TypeScript](https://www.typescriptlang.org/) · [Tailwind CSS](https://tailwindcss.com/) · [Vite](https://vite.dev/) · WebGPU shader background
 
-Make use of the many generators for code, try `pnpm ember help generate` for more details
+## Development
 
-### Running Tests
+```bash
+pnpm install
+pnpm start        # http://localhost:4200
+pnpm test         # run test suite
+pnpm lint         # lint everything
+pnpm build        # production build
+```
 
-- `pnpm test`
+## License
 
-### Linting
-
-- `pnpm lint`
-- `pnpm lint:fix`
-
-### Building
-
-- `pnpm vite build --mode development` (development)
-- `pnpm build` (production)
-
-### Deploying
-
-Specify what it takes to deploy your app.
-
-## Further Reading / Useful Links
-
-- [ember.js](https://emberjs.com/)
-- [Vite](https://vite.dev)
-- Development Browser Extensions
-  - [ember inspector for chrome](https://chrome.google.com/webstore/detail/ember-inspector/bmdblncegkenkacieihfhpjfppoconhi)
-  - [ember inspector for firefox](https://addons.mozilla.org/en-US/firefox/addon/ember-inspector/)
+MIT
