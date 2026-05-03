@@ -28,15 +28,6 @@ export default class ShaderBackground extends Component<ShaderBackgroundSignatur
         shaderInstance = await createShader(canvas, {
           components: [
             {
-              type: 'LinearGradient',
-              id: 'bg',
-              props: {
-                colorA: '#0a0a12',
-                colorB: '#0f0f1a',
-                angle: 180,
-              },
-            },
-            {
               type: 'Aurora',
               id: 'aurora',
               props: {
@@ -48,7 +39,7 @@ export default class ShaderBackground extends Component<ShaderBackgroundSignatur
                 curtainCount: 3,
                 waviness: 30,
                 height: 80,
-                center: { x: 50, y: 20 },
+                center: { x: 0.5, y: 0.2 },
               },
             },
           ],
@@ -68,9 +59,9 @@ export default class ShaderBackground extends Component<ShaderBackgroundSignatur
   });
 
   <template>
-    {{#if (this.isVisible)}}
+    {{#if this.isVisible}}
       <canvas
-        class="pointer-events-none fixed inset-0 -z-10"
+        class="shader-canvas pointer-events-none fixed inset-0 -z-10 transition-opacity duration-500"
         style="width: 100vw; height: 100dvh;"
         {{this.setupShader}}
         ...attributes

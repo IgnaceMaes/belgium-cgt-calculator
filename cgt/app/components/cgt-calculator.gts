@@ -704,14 +704,14 @@ export default class CgtCalculator extends Component {
                 <div class="h-2 w-2 rounded-full" style="background:#ec4899"></div>
                 <span class="text-xs font-medium text-foreground">Full harvest</span>
               </div>
-              <p class="text-xs text-muted-foreground leading-relaxed">Sell everything each year and immediately rebuy. This realizes all gains annually, using the €10K exemption each year. Unused exemption carries forward (€1K/year, max €5K extra). But you pay TOB on every sell &amp; buy cycle, and gains above the exemption are taxed at 10%.</p>
+              <p class="text-xs text-muted-foreground leading-relaxed">Sell everything each year and immediately rebuy. This realizes all gains annually, using the €10K exemption each year. Unused exemption carries forward (€1K/year, max €5K extra). But you pay TOB on every sell &amp; buy cycle, and gains above the exemption are taxed at 10%. Assumes you can rebuy at the same price you sold — in practice there may be a small spread.</p>
             </div>
             <div class="space-y-2">
               <div class="flex items-center gap-2">
                 <div class="h-2 w-2 rounded-full" style="background:#10b981"></div>
                 <span class="text-xs font-medium text-foreground">Smart harvest</span>
               </div>
-              <p class="text-xs text-muted-foreground leading-relaxed">Sell only enough each year to realize gains up to the €10K exemption. Unused exemption carries forward €1K/year (max €5K extra, so up to €15K total). Minimizes TOB while still harvesting the tax-free allowance. Usually the best strategy when TOB is high.</p>
+              <p class="text-xs text-muted-foreground leading-relaxed">Sell only enough each year to realize gains up to the €10K exemption. Unused exemption carries forward €1K/year (max €5K extra, so up to €15K total). Minimizes TOB while still harvesting the tax-free allowance. Usually the best strategy when TOB is high. Assumes you can rebuy at the same price you sold — in practice there may be a small spread.</p>
             </div>
           </div>
         </section>
@@ -789,8 +789,8 @@ export default class CgtCalculator extends Component {
               <svg class="h-2.5 w-2.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             </div>
             <div class="text-xs text-muted-foreground space-y-1 leading-relaxed">
-              <p><span class="text-foreground font-medium">Key rules:</span> 10% CGT on realized gains · €10K/year exempt (unused €1K carries forward, max €5K extra) · losses carry forward · TOB on every buy &amp; sell</p>
-              <p><span class="text-foreground font-medium">Note:</span> The hold scenario defers all CGT to the final sale. Harvest scenarios pay CGT each year but reset the cost basis, using the exemption annually. Broker opt-in withholds 10% on all gains upfront; you reclaim the exemption via your tax return ~2 years later.</p>
+              <p><span class="text-foreground font-medium">Key rules:</span> 10% CGT on realized gains · €10K/year exempt (unused €1K carries forward, max €5K extra) · losses offset gains within the same year only · TOB on every buy &amp; sell</p>
+              <p><span class="text-foreground font-medium">Note:</span> The hold scenario defers all CGT to the final sale. Harvest scenarios pay CGT each year but reset the cost basis, using the exemption annually. Broker opt-in withholds 10% on all gains upfront; you reclaim the exemption via your tax return ~2 years later. Harvest and smart harvest assume you can rebuy at the same price you sold — in practice, the bid-ask spread and intraday price movement may cause small deviations.</p>
               <p><span class="text-foreground font-medium">Disclaimer:</span> Estimates only. Based on the Belgian Arizona coalition tax reform proposal. Consult a tax advisor for your specific situation.</p>
             </div>
           </div>

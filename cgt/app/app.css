@@ -122,6 +122,9 @@
   html.light {
     background: oklch(0.985 0.002 247);
   }
+  html.light .shader-canvas {
+    opacity: 0;
+  }
   body {
     @apply bg-background text-foreground;
     font-family: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;

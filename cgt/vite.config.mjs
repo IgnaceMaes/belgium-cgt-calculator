@@ -22,6 +22,6 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ['shaders/js'],
+    include: ['shaders/js', 'three', 'three/tsl', 'three/webgpu'],
   },
 });
