@@ -99,9 +99,11 @@ class Tooltip extends Component<TooltipSignature> {
     };
   }
 
-  <template><div data-slot="tooltip">
-  {{yield}}
-  </div></template>
+  <template>
+    <div data-slot="tooltip">
+      {{yield}}
+    </div>
+  </template>
 }
 
 interface TooltipTriggerSignature {
@@ -145,37 +147,39 @@ class TooltipTrigger extends Component<TooltipTriggerSignature> {
     };
   });
 
-  <template>{{#if @asChild}}
-  <span
-  class={{cn "inline-block" @class}}
-  data-slot="tooltip-trigger"
-  {{on "blur" this.handleBlur}}
-  {{on "focus" this.handleFocus}}
-  {{on "mouseenter" this.handleMouseEnter}}
-  {{on "mouseleave" this.handleMouseLeave}}
-  {{! template-lint-disable no-pointer-down-event-binding }}
-  {{on "pointerdown" this.handlePointerDown}}
-  {{this.registerElement}}
-  ...attributes
-  >
-  {{yield}}
-  </span>
-  {{else}}
-  <span
-  class={{cn "inline-block" @class}}
-  data-slot="tooltip-trigger"
-  {{on "blur" this.handleBlur}}
-  {{on "focus" this.handleFocus}}
-  {{on "mouseenter" this.handleMouseEnter}}
-  {{on "mouseleave" this.handleMouseLeave}}
-  {{! template-lint-disable no-pointer-down-event-binding }}
-  {{on "pointerdown" this.handlePointerDown}}
-  {{this.registerElement}}
-  ...attributes
-  >
-  {{yield}}
-  </span>
-  {{/if}}</template>
+  <template>
+    {{#if @asChild}}
+      <span
+        class={{cn "inline-block" @class}}
+        data-slot="tooltip-trigger"
+        {{on "blur" this.handleBlur}}
+        {{on "focus" this.handleFocus}}
+        {{on "mouseenter" this.handleMouseEnter}}
+        {{on "mouseleave" this.handleMouseLeave}}
+        {{! template-lint-disable no-pointer-down-event-binding }}
+        {{on "pointerdown" this.handlePointerDown}}
+        {{this.registerElement}}
+        ...attributes
+      >
+        {{yield}}
+      </span>
+    {{else}}
+      <span
+        class={{cn "inline-block" @class}}
+        data-slot="tooltip-trigger"
+        {{on "blur" this.handleBlur}}
+        {{on "focus" this.handleFocus}}
+        {{on "mouseenter" this.handleMouseEnter}}
+        {{on "mouseleave" this.handleMouseLeave}}
+        {{! template-lint-disable no-pointer-down-event-binding }}
+        {{on "pointerdown" this.handlePointerDown}}
+        {{this.registerElement}}
+        ...attributes
+      >
+        {{yield}}
+      </span>
+    {{/if}}
+  </template>
 }
 
 interface TooltipContentSignature {
@@ -270,7 +274,7 @@ class TooltipContent extends Component<TooltipContentSignature> {
 
   get positionStyle() {
     return htmlSafe(
-      `position: fixed; left: ${this.x}px; top: ${this.y}px; z-index: 50;`
+      `position: fixed; left: ${this.x}px; top: ${this.y}px; z-index: 50;`,
     );
   }
 
@@ -317,34 +321,36 @@ class TooltipContent extends Component<TooltipContentSignature> {
     this.context.setOpen(false);
   };
 
-  <template>{{#if this.context.isRendered}}
-  {{#in-element this.destinationElement insertBefore=null}}
-  <div
-  class={{cn
-    "z-50 max-w-xs rounded-md bg-popover px-3 py-1.5 text-xs text-popover-foreground shadow-md border border-border data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2"
-    @class
-  }}
-  data-align={{if @align @align "center"}}
-  data-side={{this.actualSide}}
-  data-slot="tooltip-content"
-  data-state={{if this.context.isOpen "open" "closed"}}
-  role="tooltip"
-  style={{this.positionStyle}}
-  {{on "animationend" this.handleAnimationEnd}}
-  {{on "mouseenter" this.handleMouseEnter}}
-  {{on "mouseleave" this.handleMouseLeave}}
-  {{this.positionContent}}
-  ...attributes
-  >
-  {{yield}}
-  <div
-    class="absolute size-2.5 rotate-45 rounded-[2px] bg-popover border-border"
-    style={{this.arrowStyle}}
-    {{this.arrowModifier}}
-  ></div>
-  </div>
-  {{/in-element}}
-  {{/if}}</template>
+  <template>
+    {{#if this.context.isRendered}}
+      {{#in-element this.destinationElement insertBefore=null}}
+        <div
+          class={{cn
+            "z-50 max-w-xs rounded-md bg-popover px-3 py-1.5 text-xs text-popover-foreground shadow-md border border-border data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2"
+            @class
+          }}
+          data-align={{if @align @align "center"}}
+          data-side={{this.actualSide}}
+          data-slot="tooltip-content"
+          data-state={{if this.context.isOpen "open" "closed"}}
+          role="tooltip"
+          style={{this.positionStyle}}
+          {{on "animationend" this.handleAnimationEnd}}
+          {{on "mouseenter" this.handleMouseEnter}}
+          {{on "mouseleave" this.handleMouseLeave}}
+          {{this.positionContent}}
+          ...attributes
+        >
+          {{yield}}
+          <div
+            class="absolute size-2.5 rotate-45 rounded-[2px] bg-popover border-border"
+            style={{this.arrowStyle}}
+            {{this.arrowModifier}}
+          ></div>
+        </div>
+      {{/in-element}}
+    {{/if}}
+  </template>
 }
 
 export { Tooltip, TooltipTrigger, TooltipContent };

@@ -1,7 +1,7 @@
 // ─── Belgian CGT Calculator – Pure Tax Logic ─────────────────────
 // Based on the law approved 3 April 2026 by the Belgian Chamber.
 
-export const CGT_RATE = 0.10;
+export const CGT_RATE = 0.1;
 export const CGT_EXEMPTION = 10_000;
 export const CARRY_FORWARD_PER_YEAR = 1_000; // 1/10th of base exemption
 export const MAX_CARRY_FORWARD = 5_000; // max 5 years of carry-forward
@@ -34,7 +34,10 @@ export interface YearResult {
   refundReceived: number;
 }
 
-export function calcPortfolioTax(value: number, includePortfolioTax: boolean): number {
+export function calcPortfolioTax(
+  value: number,
+  includePortfolioTax: boolean,
+): number {
   if (!includePortfolioTax) return 0;
   return value >= PORTFOLIO_TAX_THRESHOLD ? value * PORTFOLIO_TAX_RATE : 0;
 }
@@ -65,7 +68,10 @@ export function computeExemption(
   }
 
   // Didn't fully use exemption → carry over €1,000
-  const newCF = Math.min(carryForward + CARRY_FORWARD_PER_YEAR, MAX_CARRY_FORWARD);
+  const newCF = Math.min(
+    carryForward + CARRY_FORWARD_PER_YEAR,
+    MAX_CARRY_FORWARD,
+  );
   return { effectiveExemption: totalExemption, newCarryForward: newCF };
 }
 
@@ -103,7 +109,10 @@ export function holdScenario(
     value -= ptax;
 
     // Each year we don't sell → exemption carry-forward accumulates
-    carryForward = Math.min(carryForward + CARRY_FORWARD_PER_YEAR, MAX_CARRY_FORWARD);
+    carryForward = Math.min(
+      carryForward + CARRY_FORWARD_PER_YEAR,
+      MAX_CARRY_FORWARD,
+    );
 
     // At final year, compute the CGT + TOB for the exit sale
     if (y === years) {
@@ -111,20 +120,30 @@ export function holdScenario(
       const cgt = Math.max(0, ug - effectiveExemption) * cgtRate;
       const tob = calcTob(value, tobCategory);
       results.push({
-        year: y, portfolioValue: value, unrealizedGain: 0,
-        realizedGain: ug, cgtDue: cgt, tobPaid: tob,
+        year: y,
+        portfolioValue: value,
+        unrealizedGain: 0,
+        realizedGain: ug,
+        cgtDue: cgt,
+        tobPaid: tob,
         portfolioTax: ptax,
         netPortfolioAfterTax: value - cgt - tob,
         exemptionUsed: Math.min(ug, effectiveExemption),
-        carryForward: 0, refundReceived: 0,
+        carryForward: 0,
+        refundReceived: 0,
       });
     } else {
       results.push({
-        year: y, portfolioValue: value, unrealizedGain: ug,
-        realizedGain: 0, cgtDue: 0, tobPaid: 0,
+        year: y,
+        portfolioValue: value,
+        unrealizedGain: ug,
+        realizedGain: 0,
+        cgtDue: 0,
+        tobPaid: 0,
         portfolioTax: ptax,
         netPortfolioAfterTax: value,
-        exemptionUsed: 0, carryForward,
+        exemptionUsed: 0,
+        carryForward,
         refundReceived: 0,
       });
     }
@@ -172,7 +191,8 @@ export function harvestScenario(
     const gain = Math.max(0, value - basis);
 
     const { effectiveExemption, newCarryForward } = computeExemption(
-      gain, carryForward,
+      gain,
+      carryForward,
     );
     carryForward = newCarryForward;
 
@@ -202,12 +222,18 @@ export function harvestScenario(
     basis = value;
 
     results.push({
-      year: y, portfolioValue: value, unrealizedGain: 0,
-      realizedGain: gain, cgtDue: cgt, tobPaid: tt,
+      year: y,
+      portfolioValue: value,
+      unrealizedGain: 0,
+      realizedGain: gain,
+      cgtDue: cgt,
+      tobPaid: tt,
       portfolioTax: ptax,
       netPortfolioAfterTax: value,
-      exemptionUsed: brokerMode === 'opt-out' ? Math.min(gain, effectiveExemption) : 0,
-      carryForward, refundReceived,
+      exemptionUsed:
+        brokerMode === 'opt-out' ? Math.min(gain, effectiveExemption) : 0,
+      carryForward,
+      refundReceived,
     });
   }
 
@@ -261,13 +287,22 @@ export function smartScenario(
     if (totalGain <= 0) {
       const ptax = calcPortfolioTax(value, includePortfolioTax);
       value -= ptax;
-      carryForward = Math.min(carryForward + CARRY_FORWARD_PER_YEAR, MAX_CARRY_FORWARD);
+      carryForward = Math.min(
+        carryForward + CARRY_FORWARD_PER_YEAR,
+        MAX_CARRY_FORWARD,
+      );
       results.push({
-        year: y, portfolioValue: value, unrealizedGain: 0,
-        realizedGain: 0, cgtDue: 0, tobPaid: 0,
+        year: y,
+        portfolioValue: value,
+        unrealizedGain: 0,
+        realizedGain: 0,
+        cgtDue: 0,
+        tobPaid: 0,
         portfolioTax: ptax,
         netPortfolioAfterTax: value,
-        exemptionUsed: 0, carryForward, refundReceived,
+        exemptionUsed: 0,
+        carryForward,
+        refundReceived,
       });
       continue;
     }
@@ -306,18 +341,27 @@ export function smartScenario(
 
     // Smart harvest tries to use exactly the exemption → no carry-forward builds
     if (taxable === 0 && rg < effectiveExemption) {
-      carryForward = Math.min(carryForward + CARRY_FORWARD_PER_YEAR, MAX_CARRY_FORWARD);
+      carryForward = Math.min(
+        carryForward + CARRY_FORWARD_PER_YEAR,
+        MAX_CARRY_FORWARD,
+      );
     } else {
       carryForward = 0;
     }
 
     results.push({
-      year: y, portfolioValue: value, unrealizedGain: Math.max(0, value - basis),
-      realizedGain: rg, cgtDue: cgt, tobPaid: tt,
+      year: y,
+      portfolioValue: value,
+      unrealizedGain: Math.max(0, value - basis),
+      realizedGain: rg,
+      cgtDue: cgt,
+      tobPaid: tt,
       portfolioTax: ptax,
       netPortfolioAfterTax: value,
-      exemptionUsed: brokerMode === 'opt-out' ? Math.min(rg, effectiveExemption) : 0,
-      carryForward, refundReceived,
+      exemptionUsed:
+        brokerMode === 'opt-out' ? Math.min(rg, effectiveExemption) : 0,
+      carryForward,
+      refundReceived,
     });
   }
 
@@ -351,9 +395,15 @@ export function holdTotalTax(results: YearResult[]): number {
 }
 
 export function harvestTotalTax(results: YearResult[]): number {
-  return results.reduce((s, r) => s + r.cgtDue + r.tobPaid + r.portfolioTax - r.refundReceived, 0);
+  return results.reduce(
+    (s, r) => s + r.cgtDue + r.tobPaid + r.portfolioTax - r.refundReceived,
+    0,
+  );
 }
 
 export function smartTotalTax(results: YearResult[]): number {
-  return results.reduce((s, r) => s + r.cgtDue + r.tobPaid + r.portfolioTax - r.refundReceived, 0);
+  return results.reduce(
+    (s, r) => s + r.cgtDue + r.tobPaid + r.portfolioTax - r.refundReceived,
+    0,
+  );
 }

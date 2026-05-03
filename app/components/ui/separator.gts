@@ -20,7 +20,7 @@ class Separator extends Component<SeparatorSignature> {
   get classes() {
     return cn(
       'bg-border shrink-0 data-[orientation=horizontal]:h-px data-[orientation=horizontal]:w-full data-[orientation=vertical]:h-full data-[orientation=vertical]:w-px',
-      this.args.class
+      this.args.class,
     );
   }
 
@@ -32,13 +32,15 @@ class Separator extends Component<SeparatorSignature> {
     return this.args.orientation ?? 'horizontal';
   }
 
-  <template><div
-  class={{this.classes}}
-  data-orientation={{this.orientation}}
-  data-slot="separator"
-  role={{this.role}}
-  ...attributes
-  ></div></template>
+  <template>
+    <div
+      class={{this.classes}}
+      data-orientation={{this.orientation}}
+      data-slot="separator"
+      role={{this.role}}
+      ...attributes
+    ></div>
+  </template>
 }
 
 export { Separator };

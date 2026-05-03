@@ -30,7 +30,7 @@ interface ButtonSignature {
 function buttonVariants(
   variant: Variant = 'default',
   size: Size = 'default',
-  className?: string
+  className?: string,
 ): string {
   const baseClasses =
     "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive";
@@ -64,25 +64,27 @@ class Button extends Component<ButtonSignature> {
     return buttonVariants(
       this.args.variant ?? 'default',
       this.args.size ?? 'default',
-      this.args.class
+      this.args.class,
     );
   }
 
-  <template>{{#if @asChild}}
-  {{yield (hash classes=this.classes)}}
-  {{else}}
-  <button
-  class={{this.classes}}
-  data-size={{if @size @size "default"}}
-  data-slot="button"
-  data-variant={{if @variant @variant "default"}}
-  disabled={{@disabled}}
-  type={{if @type @type "button"}}
-  ...attributes
-  >
-  {{yield}}
-  </button>
-  {{/if}}</template>
+  <template>
+    {{#if @asChild}}
+      {{yield (hash classes=this.classes)}}
+    {{else}}
+      <button
+        class={{this.classes}}
+        data-size={{if @size @size "default"}}
+        data-slot="button"
+        data-variant={{if @variant @variant "default"}}
+        disabled={{@disabled}}
+        type={{if @type @type "button"}}
+        ...attributes
+      >
+        {{yield}}
+      </button>
+    {{/if}}
+  </template>
 }
 
 export { Button, buttonVariants };

@@ -17,13 +17,15 @@ class Label extends Component<LabelSignature> {
   get classes() {
     return cn(
       'flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50',
-      this.args.class
+      this.args.class,
     );
   }
 
-  <template><label class={{this.classes}} data-slot="label" for={{@for}} ...attributes>
-  {{yield}}
-  </label></template>
+  <template>
+    <label class={{this.classes}} data-slot="label" for={{@for}} ...attributes>
+      {{yield}}
+    </label>
+  </template>
 }
 
 export { Label };

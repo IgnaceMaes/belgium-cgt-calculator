@@ -19,12 +19,17 @@ export default class ShaderBackground extends Component<ShaderBackgroundSignatur
         // Ensure canvas has pixel dimensions before init
         const rect = canvas.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) {
-          console.warn('[ShaderBackground] Canvas has zero dimensions, retrying in 100ms');
+          console.warn(
+            '[ShaderBackground] Canvas has zero dimensions, retrying in 100ms',
+          );
           await new Promise((r) => setTimeout(r, 100));
           if (destroyed) return;
         }
 
-        console.log('[ShaderBackground] Initializing shader on canvas', canvas.getBoundingClientRect());
+        console.log(
+          '[ShaderBackground] Initializing shader on canvas',
+          canvas.getBoundingClientRect(),
+        );
         shaderInstance = await createShader(canvas, {
           components: [
             {

@@ -8,10 +8,10 @@ A client-side simulator that projects how different sell/rebuy strategies affect
 
 ## Strategies
 
-| Strategy | Description |
-|---|---|
-| **Hold** | Buy and hold until exit. All gains compound untaxed, but you forfeit the annual exemption. |
-| **Full Harvest** | Sell everything yearly and rebuy. Uses the €10K exemption each year, but pays TOB on every cycle. |
+| Strategy          | Description                                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------------- |
+| **Hold**          | Buy and hold until exit. All gains compound untaxed, but you forfeit the annual exemption.                    |
+| **Full Harvest**  | Sell everything yearly and rebuy. Uses the €10K exemption each year, but pays TOB on every cycle.             |
 | **Smart Harvest** | Sell only enough to realize gains up to the exemption. Minimizes TOB while harvesting the tax-free allowance. |
 
 ## Tax Rules Modeled
