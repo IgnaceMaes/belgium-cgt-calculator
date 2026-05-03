@@ -372,6 +372,7 @@ export default class CgtCalculator extends Component {
   get smartProfit() { return this.smartFinal - this.totalInvested; }
 
   get smartVsHold() { return this.smartFinal - this.holdFinal; }
+  get harvestEqualsSmart() { return Math.abs(this.harvestFinal - this.smartFinal) < 1; }
 
   get bestStrategy(): 'hold' | 'harvest' | 'smart' {
     const vals = [
@@ -436,7 +437,12 @@ export default class CgtCalculator extends Component {
   f = (v: number) => fmt(v);
   isPos = (v: number) => v >= 0;
   isTob = (v: TobCategory) => this.tobCategory === v;
-  isBest = (s: string) => this.bestStrategy === s;
+  isBest = (s: string) => {
+    if (this.harvestEqualsSmart && (s === 'harvest' || s === 'smart')) {
+      return this.bestStrategy === 'harvest' || this.bestStrategy === 'smart';
+    }
+    return this.bestStrategy === s;
+  };
   get isBrokerOptIn() { return this.brokerReporting === 'opt-in'; }
   get isBrokerOptOut() { return this.brokerReporting === 'opt-out'; }
 
@@ -703,11 +709,13 @@ export default class CgtCalculator extends Component {
           </div>
 
           {{! Delta callout }}
-          <div class="flex items-center justify-between rounded-xl border border-border bg-card px-5 py-3.5">
-            <span class="text-sm text-muted-foreground">Smart harvest vs. hold</span>
-            <span class="text-xl font-bold tabular-nums {{if (this.isPos this.smartVsHold) 'text-emerald-400' 'text-red-400'}}">
-              {{if (this.isPos this.smartVsHold) "+" ""}}{{this.f this.smartVsHold}}
-            </span>
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between rounded-xl border border-border bg-card px-5 py-3.5">
+              <span class="text-sm text-muted-foreground">Smart harvest vs. hold</span>
+              <span class="text-xl font-bold tabular-nums {{if (this.isPos this.smartVsHold) 'text-emerald-400' 'text-red-400'}}">
+                {{if (this.isPos this.smartVsHold) "+" ""}}{{this.f this.smartVsHold}}
+              </span>
+            </div>
           </div>
         </section>
 
